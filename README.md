@@ -7,11 +7,11 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Version](https://img.shields.io/badge/Version-2.0-orange?style=for-the-badge)
 
-**Windows sunuculariniz icin 7/24 RDP guvenlik izleme ve bildirim sistemi**
+**Windows sunucularınız için 7/24 RDP güvenlik izleme ve bildirim sistemi**
 
-*Her baglantida aninda haber alin - Ulke, sehir, ISP bilgisiyle birlikte*
+*Her bağlantıda anında haber alın - Ülke, şehir, ISP bilgisiyle birlikte*
 
-[Ozellikler](#-ozellikler) • [Kurulum](#-kurulum) • [Kullanim](#-kullanim) • [Yapilandirma](#%EF%B8%8F-yapilandirma) • [SSS](#-sss)
+[Özellikler](#-özellikler) • [Kurulum](#-kurulum) • [Kullanım](#-kullanım) • [Yapılandırma](#%EF%B8%8F-yapılandırma) • [SSS](#-sss)
 
 ---
 
@@ -19,21 +19,21 @@
 
 ## 🎯 Problem
 
-Sunuculariniza **kim**, **nereden**, **ne zaman** baglandigini biliyor musunuz?
+Sunucularınıza **kim**, **nereden**, **ne zaman** bağlandığını biliyor musunuz?
 
-Cogu sistem yoneticisi Event Viewer'dan kontrol eder - ama kac kisi bunu her gun yapiyor?
+Çoğu sistem yöneticisi Event Viewer'dan kontrol eder - ama kaç kişi bunu her gün yapıyor?
 
-**RDP Security Intelligence** bu sorunu cozer:
+**RDP Security Intelligence** bu sorunu çözer:
 
-- ✅ Her baglantida telefonunuza bildirim
-- ✅ Saldiri girisimleri aninda tespit
+- ✅ Her bağlantıda telefonunuza bildirim
+- ✅ Saldırı girişimleri anında tespit
 - ✅ Kurulum sadece 5 dakika
 
 ---
 
 ## 📱 Telegram Bildirimi
 
-Her RDP girisinde su sekilde bildirim alirsiniz:
+Her RDP girişinde şu şekilde bildirim alırsınız:
 
 ```
 [i] RDP Security Alert [i]
@@ -52,7 +52,7 @@ RDP Login Successful
 ========================
 ```
 
-Basarisiz giris veya supheli ulkeden baglanti olursa:
+Başarısız giriş veya şüpheli ülkeden bağlantı olursa:
 
 ```
 [!!!] RDP Security Alert [!!!]
@@ -73,91 +73,91 @@ SUSPICIOUS COUNTRY ALERT
 
 ---
 
-## ✨ Ozellikler
+## ✨ Özellikler
 
-| Ozellik | Aciklama |
+| Özellik | Açıklama |
 |:--------|:---------|
-| 📡 **Anlik Telegram Bildirimi** | Basarili ve basarisiz tum girisler icin aninda bildirim |
-| 🌍 **GeoIP Istihbarati** | Her IP icin ulke, sehir, ISP, koordinat bilgisi |
-| 🚨 **Brute-Force Tespiti** | Belirlenen esik asildiginda otomatik uyari |
-| ⚠️ **Supheli Ulke Alarmi** | Tanimli ulkelerden baglantida CRITICAL alert |
-| 📊 **Gunluk HTML Rapor** | Her gun 23:55'te otomatik guvenlik raporu |
-| 👥 **Oturum Takibi** | Aktif oturumlar ve sureleri |
-| 🔄 **7/24 Servis** | Windows servisi olarak surekli calisma |
-| 💪 **Otomatik Kurtarma** | Cokerse 1 dakika icinde yeniden baslatma |
-| 🧹 **Log Temizligi** | Eski loglar otomatik silinir (varsayilan 90 gun) |
+| 📡 **Anlık Telegram Bildirimi** | Başarılı ve başarısız tüm girişler için anında bildirim |
+| 🌍 **GeoIP İstihbaratı** | Her IP için ülke, şehir, ISP, koordinat bilgisi |
+| 🚨 **Brute-Force Tespiti** | Belirlenen eşik aşıldığında otomatik uyarı |
+| ⚠️ **Şüpheli Ülke Alarmı** | Tanımlı ülkelerden bağlantıda CRITICAL alert |
+| 📊 **Günlük HTML Rapor** | Her gün 23:55'te otomatik güvenlik raporu |
+| 👥 **Oturum Takibi** | Aktif oturumlar ve süreleri |
+| 🔄 **7/24 Servis** | Windows servisi olarak sürekli çalışma |
+| 💪 **Otomatik Kurtarma** | Çökerse 1 dakika içinde yeniden başlatma |
+| 🧹 **Log Temizliği** | Eski loglar otomatik silinir (varsayılan 90 gün) |
 
 ---
 
 ## 🚀 Kurulum
 
-### Adim 1: Telegram Bot Olustur
+### Adım 1: Telegram Bot Oluştur
 
 1. Telegram'da **@BotFather**'a mesaj at
-2. `/newbot` komutunu gonder
-3. Bot adini ve kullanici adini gir
-4. Sana verilen **TOKEN**'i kopyala
+2. `/newbot` komutunu gönder
+3. Bot adını ve kullanıcı adını gir
+4. Sana verilen **TOKEN**'ı kopyala
 
 5. **@userinfobot**'a mesaj at
-6. `/start` komutunu gonder  
+6. `/start` komutunu gönder  
 7. Sana verilen **Chat ID**'yi kopyala
 
-### Adim 2: Script'i Yapilandir
+### Adım 2: Script'i Yapılandır
 
-Script'i indir ve asagidaki satirlari kendi bilgilerinle degistir:
+Script'i indir ve aşağıdaki satırları kendi bilgilerinle değiştir:
 
 ```powershell
 TelegramBotToken    = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
 TelegramChatID      = "987654321"
 ```
 
-### Adim 3: Kur ve Calistir
+### Adım 3: Kur ve Çalıştır
 
-PowerShell'i **Yonetici olarak** ac:
+PowerShell'i **Yönetici olarak** aç:
 
 ```powershell
-# Script'in oldugu dizine git
+# Script'in olduğu dizine git
 cd C:\Scripts
 
-# Script'i yukle
+# Script'i yükle
 . .\RDP-Security-Intelligence.ps1
 
-# Telegram baglantisinini test et
+# Telegram bağlantısını test et
 Test-TelegramConnection
 
 # Servisi kur
 Install-MonitoringScheduledTasks
 ```
 
-### Adim 4: Dogrula
+### Adım 4: Doğrula
 
 ```powershell
 # Servis durumunu kontrol et
 Get-MonitoringServiceStatus
 ```
 
-Cikti soyle olmali:
+Çıktı şöyle olmalı:
 ```
 Task: RDP Security Monitoring Service
    Durum: [+] CALISIYOR
 ```
 
-**Kurulum tamamlandi!** 🎉
+**Kurulum tamamlandı!** 🎉
 
 ---
 
-## 📋 Kullanim
+## 📋 Kullanım
 
 ### Temel Komutlar
 
 ```powershell
-# Hizli guvenlik ozeti (son 24 saat)
+# Hızlı güvenlik özeti (son 24 saat)
 Get-QuickSecurityStatus
 
-# Tum RDP baglantilarini listele
+# Tüm RDP bağlantılarını listele
 Get-RDPConnections
 
-# Aktif oturumlari gor
+# Aktif oturumları gör
 Get-ActiveRDPSessions
 
 # Brute-force analizi
@@ -166,14 +166,14 @@ Get-FailedLoginAnalysis
 # Servis durumu
 Get-MonitoringServiceStatus
 
-# Manuel HTML rapor olustur
+# Manuel HTML rapor oluştur
 New-DailyReport
 
-# Telegram baglantisini test et
+# Telegram bağlantısını test et
 Test-TelegramConnection
 ```
 
-### Ornek Ciktilar
+### Örnek Çıktılar
 
 **Get-QuickSecurityStatus:**
 ```
@@ -199,9 +199,9 @@ Uyarilar:
 
 ---
 
-## ⚙️ Yapilandirma
+## ⚙️ Yapılandırma
 
-Script'in basindaki `$Config` bolumunu duzenleyebilirsiniz:
+Script'in başındaki `$Config` bölümünü düzenleyebilirsiniz:
 
 ```powershell
 $Config = @{
@@ -210,59 +210,59 @@ $Config = @{
     TelegramBotToken    = "YOUR_BOT_TOKEN"
     TelegramChatID      = "YOUR_CHAT_ID"
     
-    # === GUVENLIK ESIKLERI ===
-    FailedLoginThreshold    = 5         # X basarisiz giristen sonra alert
+    # === GÜVENLİK EŞİKLERİ ===
+    FailedLoginThreshold    = 5         # X başarısız girişten sonra alert
     FailedLoginTimeWindow   = 300       # Zaman penceresi (saniye)
-    SuspiciousCountries     = @("CN", "RU", "KP", "IR")  # Supheli ulkeler
+    SuspiciousCountries     = @("CN", "RU", "KP", "IR")  # Şüpheli ülkeler
     
     # === LOG AYARLARI ===
-    LogRetentionDays        = 90        # Kac gun log saklansin
+    LogRetentionDays        = 90        # Kaç gün log saklansın
 }
 ```
 
-### Supheli Ulke Kodlari
+### Şüpheli Ülke Kodları
 
-| Kod | Ulke |
+| Kod | Ülke |
 |-----|------|
-| CN | Cin |
+| CN | Çin |
 | RU | Rusya |
 | KP | Kuzey Kore |
-| IR | Iran |
+| IR | İran |
 
-Eklemek icin: `SuspiciousCountries = @("CN", "RU", "KP", "IR", "VN", "BR")`
+Eklemek için: `SuspiciousCountries = @("CN", "RU", "KP", "IR", "VN", "BR")`
 
 ---
 
-## 📁 Log Yapisi
+## 📁 Log Yapısı
 
 ```
 C:\RDP-Security-Logs\
-├── Connections\          # Baglanti loglari (JSON)
+├── Connections\          # Bağlantı logları (JSON)
 │   └── connections_2024-01-15.json
-├── Sessions\             # Oturum loglari
+├── Sessions\             # Oturum logları
 │   └── sessions_2024-01-15.json
-├── Activity\             # Kullanici aktiviteleri
+├── Activity\             # Kullanıcı aktiviteleri
 │   └── activity_2024-01-15.json
-├── Alerts\               # Guvenlik uyarilari
+├── Alerts\               # Güvenlik uyarıları
 │   └── alerts_2024-01-15.json
 ├── Reports\              # HTML raporlar
 │   └── daily_report_2024-01-15.html
-└── RDP-Security-Intelligence.ps1   # Script kopyasi
+└── RDP-Security-Intelligence.ps1   # Script kopyası
 ```
 
 ---
 
 ## 🔧 Scheduled Tasks
 
-Kurulum sonrasi 3 adet Windows Task olusturulur:
+Kurulum sonrası 3 adet Windows Task oluşturulur:
 
-| Task | Calisma Zamani | Aciklama |
+| Task | Çalışma Zamanı | Açıklama |
 |------|----------------|----------|
 | RDP Security Monitoring Service | 7/24 | Ana izleme servisi |
-| RDP Security Daily Report | Her gun 23:55 | HTML rapor olusturur |
-| RDP Security Log Cleanup | Pazar 03:00 | Eski loglari siler |
+| RDP Security Daily Report | Her gün 23:55 | HTML rapor oluşturur |
+| RDP Security Log Cleanup | Pazar 03:00 | Eski logları siler |
 
-Kontrol etmek icin:
+Kontrol etmek için:
 ```powershell
 Get-MonitoringServiceStatus
 # veya
@@ -273,26 +273,26 @@ Get-ScheduledTask | Where-Object {$_.TaskName -like "RDP Security*"}
 
 ## ❓ SSS
 
-**S: Script calismiyor, hata aliorum**
+**S: Script çalışmıyor, hata alıyorum**
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
 **S: Telegram bildirimi gelmiyor**
 - Bot token ve Chat ID'yi kontrol et
-- `Test-TelegramConnection` komutunu calistir
-- Sunucudan internete erisimi kontrol et
+- `Test-TelegramConnection` komutunu çalıştır
+- Sunucudan internete erişimi kontrol et
 
-**S: Event bulunamiyor diyor**
-- PowerShell'i **Yonetici** olarak calistir
-- RDP'nin sunucuda etkin oldugunu kontrol et
+**S: Event bulunamıyor diyor**
+- PowerShell'i **Yönetici** olarak çalıştır
+- RDP'nin sunucuda etkin olduğunu kontrol et
 
 **S: Servisi durdurmak istiyorum**
 ```powershell
 Stop-ScheduledTask -TaskName "RDP Security Monitoring Service"
 ```
 
-**S: Tamamen kaldirmak istiyorum**
+**S: Tamamen kaldırmak istiyorum**
 ```powershell
 Unregister-ScheduledTask -TaskName "RDP Security Monitoring Service" -Confirm:$false
 Unregister-ScheduledTask -TaskName "RDP Security Daily Report" -Confirm:$false
@@ -306,20 +306,20 @@ Remove-Item -Path "C:\RDP-Security-Logs" -Recurse -Force
 
 - Windows Server 2016 / 2019 / 2022 veya Windows 10/11
 - PowerShell 5.1+
-- Yonetici (Administrator) yetkisi
-- Internet erisimi (GeoIP ve Telegram icin)
+- Yönetici (Administrator) yetkisi
+- İnternet erişimi (GeoIP ve Telegram için)
 
 ---
 
 ## 📝 Lisans
 
-MIT License - Detaylar icin [LICENSE](LICENSE) dosyasina bakin.
+MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
 ---
 
-## 👤 Gelistirici
+## 👤 Geliştirici
 
-**Furkan Dincer**
+**Furkan Dinçer**
 
 [![GitHub](https://img.shields.io/badge/GitHub-furkandincer-181717?style=flat&logo=github)](https://github.com/furkandincer)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-furkandincer-0077B5?style=flat&logo=linkedin)](https://linkedin.com/in/furkandincer)
@@ -328,6 +328,6 @@ MIT License - Detaylar icin [LICENSE](LICENSE) dosyasina bakin.
 
 <div align="center">
 
-⭐ **Begendiniz mi? Yildiz birakin!** ⭐
+⭐ **Beğendiniz mi? Yıldız bırakın!** ⭐
 
 </div>
