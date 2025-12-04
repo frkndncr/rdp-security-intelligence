@@ -252,7 +252,7 @@ MIT License - Özgürce kullanabilir ve değiştirebilirsiniz.
 ## 👤 Geliştirici
 
 **Furkan Dincer**
-- GitHub: [@furkandncer](https://github.com/frkndncr)
+- GitHub: [@frkndncr](https://github.com/frkndncr)
 - LinkedIn: [/in/furkandncer](https://linkedin.com/in/furkan-dincer)
 - İnstagram: [@f3rrkan](https://instagram.com/f3rrkan)
 
