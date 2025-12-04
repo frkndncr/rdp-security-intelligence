@@ -199,6 +199,7 @@ C:\RDP-Security-Logs\
 ---
 
 ## 📸 Ekran Görüntüleri
+<img width="723" height="583" alt="resim" src="https://github.com/user-attachments/assets/ab068cb4-8cfc-42df-b510-10bb15af7d8f" />
 
 ### Günlük Rapor
 - Özet kartlar (başarılı/başarısız/aktif/tehdit)
