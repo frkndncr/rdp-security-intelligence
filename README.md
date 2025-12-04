@@ -1,125 +1,83 @@
-# 🛡️ RDP Security Intelligence
+# 🛡️ RDP Security Intelligence System v3.0
 
-<div align="center">
+Windows sunucular için kapsamlı RDP güvenlik izleme ve koruma sistemi. Brute-force saldırılarını tespit eder, otomatik IP engeller, Telegram bildirimi gönderir ve detaylı raporlar oluşturur.
 
-![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-5391FE?style=for-the-badge&logo=powershell&logoColor=white)
-![Windows Server](https://img.shields.io/badge/Windows_Server-2016|2019|2022-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-![Version](https://img.shields.io/badge/Version-2.0-orange?style=for-the-badge)
-
-**Windows sunucularınız için 7/24 RDP güvenlik izleme ve bildirim sistemi**
-
-*Her bağlantıda anında haber alın - Ülke, şehir, ISP bilgisiyle birlikte*
-
-[Özellikler](#-özellikler) • [Kurulum](#-kurulum) • [Kullanım](#-kullanım) • [Yapılandırma](#%EF%B8%8F-yapılandırma) • [SSS](#-sss)
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)
+![Windows Server](https://img.shields.io/badge/Windows%20Server-2012%20R2+-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Version](https://img.shields.io/badge/Version-3.0.0-red.svg)
 
 ---
 
-</div>
-
-## 🎯 Problem
-
-Sunucularınıza **kim**, **nereden**, **ne zaman** bağlandığını biliyor musunuz?
-
-Çoğu sistem yöneticisi Event Viewer'dan kontrol eder - ama kaç kişi bunu her gün yapıyor?
-
-**RDP Security Intelligence** bu sorunu çözer:
-
-- ✅ Her bağlantıda telefonunuza bildirim
-- ✅ Saldırı girişimleri anında tespit
-- ✅ Kurulum sadece 5 dakika
-
----
-
-## 📱 Telegram Bildirimi
-
-Her RDP girişinde şu şekilde bildirim alırsınız:
-
-```
-[i] RDP Security Alert [i]
-========================
-Server: PROD-DC01
-Time: 2024-01-15 09:15:32
-Severity: INFO
-
-RDP Login Successful
-
-- User : DOMAIN\furkan
-- IP : 85.105.xx.xx
-- Country : Turkey
-- City : Istanbul
-- ISP : Turk Telekom
-========================
-```
-
-Başarısız giriş veya şüpheli ülkeden bağlantı olursa:
-
-```
-[!!!] RDP Security Alert [!!!]
-========================
-Server: PROD-DC01
-Time: 2024-01-15 14:32:45
-Severity: CRITICAL
-
-SUSPICIOUS COUNTRY ALERT
-
-- User : administrator
-- IP : 185.220.101.45
-- Country : Russia
-- City : Moscow
-- ISP : Suspicious Hosting
-========================
-```
-
----
-
-## ✨ Özellikler
+## 🆕 V3.0 Yenilikler
 
 | Özellik | Açıklama |
-|:--------|:---------|
-| 📡 **Anlık Telegram Bildirimi** | Başarılı ve başarısız tüm girişler için anında bildirim |
-| 🌍 **GeoIP İstihbaratı** | Her IP için ülke, şehir, ISP, koordinat bilgisi |
-| 🚨 **Brute-Force Tespiti** | Belirlenen eşik aşıldığında otomatik uyarı |
-| ⚠️ **Şüpheli Ülke Alarmı** | Tanımlı ülkelerden bağlantıda CRITICAL alert |
-| 📊 **Günlük HTML Rapor** | Her gün 23:55'te otomatik güvenlik raporu |
-| 👥 **Oturum Takibi** | Aktif oturumlar ve süreleri |
-| 🔄 **7/24 Servis** | Windows servisi olarak sürekli çalışma |
-| 💪 **Otomatik Kurtarma** | Çökerse 1 dakika içinde yeniden başlatma |
-| 🧹 **Log Temizliği** | Eski loglar otomatik silinir (varsayılan 90 gün) |
+|---------|----------|
+| 🚫 **Otomatik IP Engelleme** | Brute-force saldırganlarını Windows Firewall'a otomatik ekler |
+| ✅ **Whitelist Desteği** | Güvenli IP'lerden alert gelmez (CIDR desteği) |
+| ⏱️ **Rate Limiting** | Dakikada max deneme kontrolü |
+| 🔍 **Şüpheli Process Tespiti** | mimikatz, psexec, procdump vs. algılama |
+| 👤 **Kullanıcı Adı Analizi** | Hangi hesaplar hedefleniyor |
+| 📊 **Haftalık Rapor** | 7 günlük trend analizi |
+| 🎨 **Modern HTML Raporlar** | Gradient tasarım, grafikler, responsive |
 
 ---
 
-## 🚀 Kurulum
+## ✨ Tüm Özellikler
 
-### Adım 1: Telegram Bot Oluştur
+### 🔒 Güvenlik
+- 7/24 RDP bağlantı izleme
+- Brute-force saldırı tespiti
+- Otomatik IP engelleme (Firewall)
+- Şüpheli ülke uyarısı (CN, RU, KP, IR)
+- Şüpheli process tespiti
+- Rate limiting
 
-1. Telegram'da **@BotFather**'a mesaj at
-2. `/newbot` komutunu gönder
-3. Bot adını ve kullanıcı adını gir
-4. Sana verilen **TOKEN**'ı kopyala
+### 📍 İstihbarat
+- GeoIP konum tespiti (ülke, şehir, ISP)
+- Saldırgan IP analizi
+- Hedeflenen kullanıcı adı analizi
+- Ülke bazlı istatistikler
 
-5. **@userinfobot**'a mesaj at
-6. `/start` komutunu gönder  
-7. Sana verilen **Chat ID**'yi kopyala
+### 📱 Bildirimler
+- Telegram anlık alertler
+- Başarılı/başarısız giriş bildirimi
+- Brute-force alarm
+- IP engellendiğinde bildirim
+- Şüpheli process uyarısı
 
-### Adım 2: Script'i Yapılandır
+### 📊 Raporlama
+- Günlük HTML rapor (otomatik 23:55)
+- Haftalık HTML rapor (Pazartesi 00:05)
+- Modern gradient tasarım
+- Saatlik/günlük dağılım grafikleri
+- En çok saldıran IP listesi
 
-Script'i indir ve aşağıdaki satırları kendi bilgilerinle değiştir:
+---
 
-```powershell
-TelegramBotToken    = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-TelegramChatID      = "987654321"
+## 🚀 Hızlı Kurulum
+
+### 1. Telegram Bot Oluştur
+```
+1. @BotFather'a git
+2. /newbot komutu
+3. Bot adı ve username gir
+4. Token'ı kaydet
+5. @userinfobot'tan Chat ID al
 ```
 
-### Adım 3: Kur ve Çalıştır
-
-PowerShell'i **Yönetici olarak** aç:
-
+### 2. Script'i İndir ve Yapılandır
 ```powershell
-# Script'in olduğu dizine git
-cd C:\Scripts
+# Token'ları düzenle
+$Config = @{
+    TelegramBotToken = "YOUR_BOT_TOKEN_HERE"
+    TelegramChatID   = "YOUR_CHAT_ID_HERE"
+}
+```
 
-# Script'i yükle
+### 3. Kurulumu Başlat
+```powershell
+# PowerShell Admin olarak çalıştır
 . .\RDP-Security-Intelligence.ps1
 
 # Telegram bağlantısını test et
@@ -129,205 +87,197 @@ Test-TelegramConnection
 Install-MonitoringScheduledTasks
 ```
 
-### Adım 4: Doğrula
-
+### 4. Whitelist Ayarla (Önemli!)
 ```powershell
-# Servis durumunu kontrol et
-Get-MonitoringServiceStatus
-```
+# Kendi IP'lerini ekle (alert gelmesin)
+Add-WhitelistIP -IPAddress "YOUR_PUBLIC_IP"
 
-Çıktı şöyle olmalı:
+# Whitelist'i kontrol et
+Get-WhitelistIPs
 ```
-Task: RDP Security Monitoring Service
-   Durum: [+] CALISIYOR
-```
-
-**Kurulum tamamlandı!** 🎉
 
 ---
 
-## 📋 Kullanım
+## 📋 Komutlar
 
-### Temel Komutlar
-
+### Durum Kontrol
 ```powershell
-# Hızlı güvenlik özeti (son 24 saat)
-Get-QuickSecurityStatus
-
-# Tüm RDP bağlantılarını listele
-Get-RDPConnections
-
-# Aktif oturumları gör
-Get-ActiveRDPSessions
-
-# Brute-force analizi
-Get-FailedLoginAnalysis
-
-# Servis durumu
-Get-MonitoringServiceStatus
-
-# Manuel HTML rapor oluştur
-New-DailyReport
-
-# Telegram bağlantısını test et
-Test-TelegramConnection
+Get-MonitoringServiceStatus     # Servis durumu
+Get-QuickSecurityStatus         # Hızlı özet
+Get-RDPConnections              # Son 24 saat bağlantıları
 ```
 
-### Örnek Çıktılar
-
-**Get-QuickSecurityStatus:**
+### Raporlar
+```powershell
+New-DailyReport                 # Günlük HTML rapor
+New-WeeklyReport                # Haftalık HTML rapor
+Show-TargetedUsernames          # Hedeflenen kullanıcı adları
 ```
-============================================================
-            RDP SECURITY QUICK STATUS
-============================================================
 
-Son 24 Saat:
-   [+] Basarili Giris : 12
-   [-] Basarisiz      : 847
-   [*] Aktif Oturum   : 2
-   [!] Uyari          : 3
+### Whitelist Yönetimi
+```powershell
+Get-WhitelistIPs                      # Whitelist listele
+Add-WhitelistIP -IPAddress "x.x.x.x"  # IP ekle
+Remove-WhitelistIP -IPAddress "x.x.x.x"  # IP çıkar
+```
 
-Aktif Oturumlar:
-   - DOMAIN\furkan (ID: 2, Active)
-   - DOMAIN\admin (ID: 3, Active)
-
-Uyarilar:
-   [!] 185.220.101.45 (Russia) - 156 deneme
-   [!] 45.227.255.99 (China) - 89 deneme
-============================================================
+### IP Engelleme
+```powershell
+Get-BlockedIPs                        # Engelli IP'leri göster
+Block-IPAddress -IPAddress "x.x.x.x"  # Manuel IP engelle
+Unblock-IPAddress -IPAddress "x.x.x.x"  # Engeli kaldır
+Clear-ExpiredBlocks                   # Süresi dolanları temizle
 ```
 
 ---
 
 ## ⚙️ Yapılandırma
 
-Script'in başındaki `$Config` bölümünü düzenleyebilirsiniz:
+Script içindeki `$Config` bölümünden ayarlanabilir:
 
 ```powershell
 $Config = @{
-    # === TELEGRAM ===
-    EnableTelegramAlert = $true
-    TelegramBotToken    = "YOUR_BOT_TOKEN"
-    TelegramChatID      = "YOUR_CHAT_ID"
+    # Güvenlik Eşikleri
+    FailedLoginThreshold    = 5       # Kaç denemede brute-force alarmı
+    AutoBlockThreshold      = 10      # Kaç denemede otomatik engel
+    AutoBlockDurationDays   = 30      # Engel süresi (gün)
+    RateLimitPerMinute      = 20      # Dakikada max deneme
     
-    # === GÜVENLİK EŞİKLERİ ===
-    FailedLoginThreshold    = 5         # X başarısız girişten sonra alert
-    FailedLoginTimeWindow   = 300       # Zaman penceresi (saniye)
-    SuspiciousCountries     = @("CN", "RU", "KP", "IR")  # Şüpheli ülkeler
+    # Şüpheli Ülkeler
+    SuspiciousCountries     = @("CN", "RU", "KP", "IR")
     
-    # === LOG AYARLARI ===
-    LogRetentionDays        = 90        # Kaç gün log saklansın
+    # Whitelist (varsayılan)
+    WhitelistIPs            = @("192.168.1.0/24", "10.0.0.0/8", "172.16.0.0/12")
+    
+    # Şüpheli Process'ler
+    SuspiciousProcesses     = @("mimikatz", "psexec", "procdump", "lazagne")
+    
+    # Log Saklama
+    LogRetentionDays        = 90
 }
 ```
 
-### Şüpheli Ülke Kodları
-
-| Kod | Ülke |
-|-----|------|
-| CN | Çin |
-| RU | Rusya |
-| KP | Kuzey Kore |
-| IR | İran |
-
-Eklemek için: `SuspiciousCountries = @("CN", "RU", "KP", "IR", "VN", "BR")`
-
 ---
 
-## 📁 Log Yapısı
+## 📁 Dosya Yapısı
 
 ```
 C:\RDP-Security-Logs\
-├── Connections\          # Bağlantı logları (JSON)
-│   └── connections_2024-01-15.json
-├── Sessions\             # Oturum logları
-│   └── sessions_2024-01-15.json
-├── Activity\             # Kullanıcı aktiviteleri
-│   └── activity_2024-01-15.json
-├── Alerts\               # Güvenlik uyarıları
-│   └── alerts_2024-01-15.json
-├── Reports\              # HTML raporlar
-│   └── daily_report_2024-01-15.html
-└── RDP-Security-Intelligence.ps1   # Script kopyası
+├── RDP-Security-Intelligence.ps1   # Ana script
+├── Connections\                     # Bağlantı logları
+├── Sessions\                        # Oturum logları
+├── Activity\                        # Aktivite logları
+├── Alerts\                          # Alarm logları
+├── Reports\                         # HTML raporlar
+└── BlockedIPs\                      # Engelli IP kayıtları
 ```
 
 ---
 
 ## 🔧 Scheduled Tasks
 
-Kurulum sonrası 3 adet Windows Task oluşturulur:
-
-| Task | Çalışma Zamanı | Açıklama |
-|------|----------------|----------|
+| Task | Zaman | Açıklama |
+|------|-------|----------|
 | RDP Security Monitoring Service | 7/24 | Ana izleme servisi |
-| RDP Security Daily Report | Her gün 23:55 | HTML rapor oluşturur |
-| RDP Security Log Cleanup | Pazar 03:00 | Eski logları siler |
+| RDP Security Daily Report | 23:55 | Günlük rapor |
+| RDP Security Weekly Report | Pazartesi 00:05 | Haftalık rapor |
+| RDP Security Log Cleanup | Pazar 03:00 | Eski log temizliği |
 
-Kontrol etmek için:
-```powershell
-Get-MonitoringServiceStatus
-# veya
-Get-ScheduledTask | Where-Object {$_.TaskName -like "RDP Security*"}
+---
+
+## 📱 Telegram Bildirimleri
+
+Şu durumlarda Telegram'a mesaj gelir:
+- ✅ Başarılı RDP girişi (whitelist dışı)
+- ❌ Başarısız RDP denemesi
+- 🚨 Brute-force saldırısı
+- 🌍 Şüpheli ülkeden bağlantı
+- ⏱️ Rate limit aşıldığında
+- 🚫 IP otomatik engellendiğinde
+- ⚠️ Şüpheli process tespit edildiğinde
+
+---
+
+## 📸 Ekran Görüntüleri
+
+### Günlük Rapor
+- Özet kartlar (başarılı/başarısız/aktif/tehdit)
+- En çok saldıran IP'ler tablosu
+- Ülke dağılımı grafiği
+- Saatlik saldırı yoğunluğu
+- Başarılı girişler listesi
+- Aktif oturumlar
+
+### Telegram Alert
+```
+[!!!] RDP Security Alert [!!!]
+========================
+Server: SERVER_NAME
+Time: 2024-12-04 15:30:45
+Severity: CRITICAL
+
+Brute Force Saldirisi Tespit Edildi
+
+Coklu basarisiz giris: 119.148.8.66
+- IP : 119.148.8.66
+- Ulke : Bangladesh
+- Deneme : 150
+========================
 ```
 
 ---
 
 ## ❓ SSS
 
-**S: Script çalışmıyor, hata alıyorum**
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
+**S: IPBan ile birlikte kullanabilir miyim?**
+C: Evet, çakışmaz. İkisi de bağımsız çalışır.
 
-**S: Telegram bildirimi gelmiyor**
-- Bot token ve Chat ID'yi kontrol et
-- `Test-TelegramConnection` komutunu çalıştır
-- Sunucudan internete erişimi kontrol et
+**S: Kendi IP'mden alert gelmesin nasıl yaparım?**
+C: `Add-WhitelistIP -IPAddress "IP_ADRESIN"` komutu ile whitelist'e ekle.
 
-**S: Event bulunamıyor diyor**
-- PowerShell'i **Yönetici** olarak çalıştır
-- RDP'nin sunucuda etkin olduğunu kontrol et
+**S: Otomatik engellemeyi kapatabilir miyim?**
+C: `$Config.EnableAutoBlock = $false` yaparak kapatabilirsin.
 
-**S: Servisi durdurmak istiyorum**
-```powershell
-Stop-ScheduledTask -TaskName "RDP Security Monitoring Service"
-```
-
-**S: Tamamen kaldırmak istiyorum**
-```powershell
-Unregister-ScheduledTask -TaskName "RDP Security Monitoring Service" -Confirm:$false
-Unregister-ScheduledTask -TaskName "RDP Security Daily Report" -Confirm:$false
-Unregister-ScheduledTask -TaskName "RDP Security Log Cleanup" -Confirm:$false
-Remove-Item -Path "C:\RDP-Security-Logs" -Recurse -Force
-```
+**S: Engel süresi ne kadar?**
+C: Varsayılan 30 gün. `$Config.AutoBlockDurationDays` ile değiştirebilirsin.
 
 ---
 
-## 📋 Gereksinimler
+## 📄 Lisans
 
-- Windows Server 2016 / 2019 / 2022 veya Windows 10/11
-- PowerShell 5.1+
-- Yönetici (Administrator) yetkisi
-- İnternet erişimi (GeoIP ve Telegram için)
-
----
-
-## 📝 Lisans
-
-MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
+MIT License - Özgürce kullanabilir ve değiştirebilirsiniz.
 
 ---
 
 ## 👤 Geliştirici
 
-**Furkan Dinçer**
-
-[![GitHub](https://img.shields.io/badge/GitHub-furkandincer-181717?style=flat&logo=github)](https://github.com/furkandincer)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-furkandincer-0077B5?style=flat&logo=linkedin)](https://linkedin.com/in/furkandincer)
+**Furkan Dincer**
+- GitHub: [@furkandncer](https://github.com/frkndncr)
+- LinkedIn: [/in/furkandncer](https://linkedin.com/in/furkan-dincer)
+- İnstagram: [@f3rrkan](https://instagram.com/f3rrkan)
 
 ---
 
-<div align="center">
+## ⭐ Destek
 
-⭐ **Beğendiniz mi? Yıldız bırakın!** ⭐
+Projeyi beğendiyseniz ⭐ vermeyi unutmayın!
 
-</div>
+---
+
+## 📝 Changelog
+
+### v3.0.0 (2024-12-04)
+- ✨ Otomatik IP engelleme (Windows Firewall)
+- ✨ Whitelist desteği (CIDR notation)
+- ✨ Rate limiting
+- ✨ Şüpheli process tespiti
+- ✨ Hedeflenen kullanıcı adı analizi
+- ✨ Haftalık rapor
+- 🎨 Modern HTML rapor tasarımı
+- 🐛 Çeşitli hata düzeltmeleri
+
+### v2.0.0
+- İlk public release
+- Temel monitoring özellikleri
+- Telegram entegrasyonu
+- Günlük raporlama
