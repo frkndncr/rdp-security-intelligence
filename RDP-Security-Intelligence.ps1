@@ -1,22 +1,30 @@
 <#
 .SYNOPSIS
     RDP Security Intelligence & Ultra Monitoring System v3.0
-    Kapsamli RDP Guvenlik Izleme ve Loglama Sistemi
+    Kapsamli RDP Guvenlik Izleme, Koruma ve Raporlama Sistemi
     
 .DESCRIPTION
     Bu script asagidaki ozellikleri saglar:
+    
+    [IZLEME]
     - Tum RDP baglantilarini loglar (basarili/basarisiz)
     - IP adresinden GeoIP bilgisi ceker (ulke, sehir, ISP)
     - Oturum suresini takip eder
-    - Kullanici aktivitelerini kaydeder (acilan programlar, dosyalar)
-    - Brute-force saldiri tespiti
-    - Otomatik IP engelleme (Windows Firewall)
-    - Whitelist destegi (guvenli IP'ler icin alert yok)
-    - Rate limiting (dakikada max deneme kontrolu)
-    - Supheli process tespiti (mimikatz, psexec vs.)
+    - Kullanici aktivitelerini kaydeder
+    - Supheli process tespiti (mimikatz, psexec vb.)
+    
+    [KORUMA]
+    - Brute-force saldiri tespiti ve otomatik IP engelleme
+    - Windows Firewall entegrasyonu
+    - Whitelist destegi (CIDR notation)
+    - Rate limiting
+    - Supheli ulke uyarilari
+    
+    [RAPORLAMA]
+    - Real-time Telegram bildirimleri
+    - Detayli gunluk HTML raporlar
+    - Kapsamli haftalik HTML raporlar
     - Hedeflenen kullanici adi analizi
-    - Real-time alerting (Telegram)
-    - Gunluk/haftalik HTML raporlama
     
 .AUTHOR
     Furkan Dincer
@@ -24,13 +32,13 @@
 .VERSION
     3.0.0
     
+.LINK
+    https://github.com/furkandncer/RDP-Security-Intelligence
+    
 .NOTES
-    Windows Server 2012 R2/2016/2019/2022 uyumlu
+    Windows Server 2012 R2/2016/2019/2022/2025 uyumlu
     PowerShell 5.1+ gerektirir
     Yonetici haklari ile calistirilmalidir
-    
-.LINK
-    https://github.com/frkndncr/rdp-security-intelligence
 #>
 
 #Requires -RunAsAdministrator
@@ -524,215 +532,6 @@ function Show-TargetedUsernames {
     Write-Host ""
 }
 
-# ==================== WEEKLY/MONTHLY REPORTS ====================
-
-function New-WeeklyReport {
-    $reportDate = Get-Date -Format "yyyy-MM-dd"
-    $weekStart = (Get-Date).AddDays(-7)
-    $reportPath = Join-Path $Config.ReportPath "weekly_report_$reportDate.html"
-    
-    Write-Host "[*] Haftalik rapor olusturuluyor..." -ForegroundColor Yellow
-    
-    # Son 7 gunun verilerini topla
-    $allConnections = @()
-    $allAlerts = @()
-    
-    for ($i = 0; $i -lt 7; $i++) {
-        $date = (Get-Date).AddDays(-$i).ToString("yyyy-MM-dd")
-        Write-Host "  - $date okunuyor..." -ForegroundColor Gray
-        
-        # Connection loglari
-        $connFile = Join-Path $Config.ConnectionLogPath "connections_$date.json"
-        if (Test-Path $connFile) {
-            Get-Content $connFile -ErrorAction SilentlyContinue | ForEach-Object {
-                try { $allConnections += ($_ | ConvertFrom-Json) } catch { }
-            }
-        }
-        
-        # Alert loglari
-        $alertFile = Join-Path $Config.AlertLogPath "alerts_$date.json"
-        if (Test-Path $alertFile) {
-            Get-Content $alertFile -ErrorAction SilentlyContinue | ForEach-Object {
-                try { $allAlerts += ($_ | ConvertFrom-Json) } catch { }
-            }
-        }
-    }
-    
-    Write-Host "  - Veriler analiz ediliyor..." -ForegroundColor Gray
-    
-    # Gunluk dagilim
-    $dailyStats = @{}
-    for ($i = 6; $i -ge 0; $i--) {
-        $date = (Get-Date).AddDays(-$i).ToString("yyyy-MM-dd")
-        $dailyStats[$date] = @{ Success = 0; Failed = 0 }
-    }
-    
-    foreach ($conn in $allConnections) {
-        try {
-            $date = ([DateTime]$conn.Timestamp).ToString("yyyy-MM-dd")
-            if ($dailyStats.ContainsKey($date)) {
-                if ($conn.Data.EventType -eq "SuccessfulLogon") {
-                    $dailyStats[$date].Success++
-                }
-                else {
-                    $dailyStats[$date].Failed++
-                }
-            }
-        }
-        catch { }
-    }
-    
-    # Unique saldirgan IP'ler
-    $attackerIPs = @{}
-    foreach ($conn in $allConnections) {
-        if ($conn.Data.EventType -eq "FailedLogon" -and $conn.Data.SourceIP) {
-            $ip = $conn.Data.SourceIP
-            if (-not $attackerIPs.ContainsKey($ip)) {
-                $attackerIPs[$ip] = @{ Count = 0; Country = $conn.Data.Country }
-            }
-            $attackerIPs[$ip].Count++
-        }
-    }
-    $topAttackers = $attackerIPs.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending | Select-Object -First 15
-    
-    # Hedeflenen kullanici adlari - log dosyalarindan al (event log yerine)
-    $userStats = @{}
-    foreach ($conn in $allConnections) {
-        if ($conn.Data.EventType -eq "FailedLogon" -and $conn.Data.Username) {
-            $user = $conn.Data.Username.Split('\')[-1]  # Domain kismini at
-            if (-not $userStats.ContainsKey($user)) { $userStats[$user] = 0 }
-            $userStats[$user]++
-        }
-    }
-    $topUsers = $userStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10
-    
-    Write-Host "  - HTML olusturuluyor..." -ForegroundColor Gray
-    
-    # HTML olustur
-    $dailyChartHtml = ""
-    $maxVal = ($dailyStats.Values | ForEach-Object { $_.Success + $_.Failed } | Measure-Object -Maximum).Maximum
-    if ($maxVal -eq 0) { $maxVal = 1 }
-    
-    foreach ($day in ($dailyStats.Keys | Sort-Object)) {
-        $dayName = ([DateTime]$day).ToString("ddd")
-        $total = $dailyStats[$day].Success + $dailyStats[$day].Failed
-        $height = [math]::Round(($total / $maxVal) * 100)
-        $dailyChartHtml += "<div class='day-bar'><div class='day-fill' style='height: $height%' title='$($dayName): $total'></div><span class='day-label'>$dayName</span></div>`n"
-    }
-    
-    $attackerRows = ""
-    $rank = 1
-    foreach ($a in $topAttackers) {
-        $attackerRows += "<tr><td>$rank</td><td><strong>$($a.Key)</strong></td><td>$($a.Value.Country)</td><td class='attempt-count'>$($a.Value.Count)</td></tr>`n"
-        $rank++
-    }
-    
-    $userRows = ""
-    $rank = 1
-    foreach ($u in $topUsers) {
-        $isCommon = $u.Key -in @("administrator", "admin", "sa", "root", "user", "guest", "test")
-        $class = if ($isCommon) { "common-user" } else { "real-user" }
-        $userRows += "<tr class='$class'><td>$rank</td><td><strong>$($u.Key)</strong></td><td class='attempt-count'>$($u.Value)</td></tr>`n"
-        $rank++
-    }
-    
-    $totalSuccess = 0
-    $totalFailed = 0
-    foreach ($day in $dailyStats.Keys) {
-        $totalSuccess += $dailyStats[$day].Success
-        $totalFailed += $dailyStats[$day].Failed
-    }
-    $uniqueAttackers = $attackerIPs.Count
-    
-    $html = @"
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <title>RDP Security Weekly Report - $reportDate</title>
-    <meta charset="UTF-8">
-    <style>
-        :root { --primary: #667eea; --success: #48bb78; --danger: #f56565; --warning: #ed8936; --dark: #2d3748; --light: #f7fafc; --gray: #718096; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a365d 0%, #2d3748 100%); min-height: 100vh; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        .header { background: rgba(255,255,255,0.95); border-radius: 16px; padding: 30px; margin-bottom: 20px; }
-        .header h1 { font-size: 1.8em; color: var(--dark); }
-        .header h1::before { content: ''; display: inline-block; width: 8px; height: 32px; background: linear-gradient(180deg, #667eea 0%, #f56565 100%); border-radius: 4px; margin-right: 15px; }
-        .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px; }
-        .stat-card { background: white; border-radius: 16px; padding: 25px; text-align: center; }
-        .stat-card h3 { font-size: 2.5em; margin-bottom: 5px; }
-        .stat-card.success h3 { color: var(--success); }
-        .stat-card.danger h3 { color: var(--danger); }
-        .stat-card.warning h3 { color: var(--warning); }
-        .stat-card.info h3 { color: var(--primary); }
-        .section { background: white; border-radius: 16px; padding: 25px; margin-bottom: 20px; }
-        .section-title { font-size: 1.2em; color: var(--dark); margin-bottom: 20px; border-bottom: 2px solid var(--light); padding-bottom: 10px; }
-        .daily-chart { display: flex; align-items: flex-end; height: 150px; gap: 10px; justify-content: space-around; }
-        .day-bar { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; }
-        .day-fill { width: 100%; background: linear-gradient(180deg, var(--danger) 0%, var(--warning) 100%); border-radius: 8px 8px 0 0; min-height: 5px; }
-        .day-label { margin-top: 10px; font-weight: 600; color: var(--gray); }
-        table { width: 100%; border-collapse: collapse; }
-        th { background: var(--dark); color: white; padding: 12px; text-align: left; }
-        td { padding: 12px; border-bottom: 1px solid #edf2f7; }
-        .attempt-count { font-weight: 700; color: var(--danger); }
-        .common-user { background: #fffaf0; }
-        .real-user { background: #fff5f5; }
-        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .footer { text-align: center; padding: 20px; color: rgba(255,255,255,0.7); }
-        @media (max-width: 900px) { .summary-grid, .two-col { grid-template-columns: 1fr; } }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Haftalik Guvenlik Raporu</h1>
-            <p style="color: var(--gray); margin-top: 10px;">$env:COMPUTERNAME | $((Get-Date).AddDays(-7).ToString("dd.MM.yyyy")) - $((Get-Date).ToString("dd.MM.yyyy"))</p>
-        </div>
-        
-        <div class="summary-grid">
-            <div class="stat-card success"><h3>$totalSuccess</h3><p>Basarili Giris</p></div>
-            <div class="stat-card danger"><h3>$totalFailed</h3><p>Basarisiz Deneme</p></div>
-            <div class="stat-card warning"><h3>$uniqueAttackers</h3><p>Farkli Saldirgan</p></div>
-            <div class="stat-card info"><h3>$($allAlerts.Count)</h3><p>Guvenlik Alarmi</p></div>
-        </div>
-        
-        <div class="section">
-            <h2 class="section-title">Gunluk Dagilim</h2>
-            <div class="daily-chart">$dailyChartHtml</div>
-        </div>
-        
-        <div class="two-col">
-            <div class="section">
-                <h2 class="section-title">En Cok Saldiran IP'ler</h2>
-                <table>
-                    <tr><th>#</th><th>IP Adresi</th><th>Ulke</th><th>Deneme</th></tr>
-                    $attackerRows
-                </table>
-            </div>
-            <div class="section">
-                <h2 class="section-title">Hedeflenen Kullanici Adlari</h2>
-                <table>
-                    <tr><th>#</th><th>Kullanici Adi</th><th>Deneme</th></tr>
-                    $userRows
-                </table>
-                <p style="margin-top: 15px; font-size: 0.85em; color: var(--gray);">
-                    <span style="background: #fffaf0; padding: 2px 8px; border-radius: 4px;">Sari</span> = Yaygin kullanici adi &nbsp;
-                    <span style="background: #fff5f5; padding: 2px 8px; border-radius: 4px;">Kirmizi</span> = Gercek hesap olabilir
-                </p>
-            </div>
-        </div>
-        
-        <div class="footer">RDP Security Intelligence - Haftalik Rapor</div>
-    </div>
-</body>
-</html>
-"@
-    
-    $html | Out-File -FilePath $reportPath -Encoding UTF8
-    Write-Host "[+] Haftalik rapor olusturuldu: $reportPath" -ForegroundColor Green
-    return $reportPath
-}
-
 # ==================== RDP CONNECTION MONITORING ====================
 
 function Get-RDPConnections {
@@ -762,12 +561,13 @@ function Get-RDPConnections {
             }
         }
         
+        # Basarisiz girisler - LogonType 3 (Network) ve 10 (RDP) dahil
         $failedLogons = Get-WinEvent -FilterHashtable @{
             LogName   = 'Security'
             ID        = 4625
             StartTime = $startTime
         } -ErrorAction SilentlyContinue | Where-Object {
-            $_.Properties[10].Value -eq 10
+            $_.Properties[10].Value -in @(3, 10)
         }
         
         foreach ($event in $failedLogons) {
@@ -1144,107 +944,85 @@ $dataText
 # ==================== REPORTING ====================
 
 function New-DailyReport {
-    $reportDate = Get-Date -Format "yyyy-MM-dd"
-    $reportPath = Join-Path $Config.ReportPath "daily_report_$reportDate.html"
+    param([DateTime]$TargetDate = (Get-Date))
     
+    $reportDateStr = $TargetDate.ToString("yyyy-MM-dd")
+    $reportPath = Join-Path $Config.ReportPath "daily_report_$reportDateStr.html"
+    
+    Write-Host "[*] Gunluk rapor hazirlaniyor: $reportDateStr" -ForegroundColor Cyan
+    Write-Host "  - Event Log okunuyor..." -ForegroundColor Gray
+    
+    # --- VERI TOPLAMA ---
+    # Tum failed logonlari al (LogonType 3 ve 10)
     $connections = Get-RDPConnections
     $successfulLogons = $connections | Where-Object { $_.EventType -eq "SuccessfulLogon" }
     $failedLogons = $connections | Where-Object { $_.EventType -eq "FailedLogon" }
     $sessions = Get-ActiveRDPSessions
     $bruteForceAnalysis = Get-FailedLoginAnalysis -TimeWindowMinutes 1440
     
-    # Unique IP'ler icin GeoIP bilgisi
-    $uniqueIPs = ($connections | Select-Object -ExpandProperty SourceIP -Unique) | Where-Object { $_ }
+    Write-Host "  - Basarili: $($successfulLogons.Count), Basarisiz: $($failedLogons.Count)" -ForegroundColor Gray
+    Write-Host "  - GeoIP bilgileri aliniyor..." -ForegroundColor Gray
+    
+    # GeoIP bilgileri - sadece dis IP'ler icin
+    $uniqueIPs = ($failedLogons | Select-Object -ExpandProperty SourceIP -Unique) | Where-Object { 
+        $_ -and $_ -ne "-" -and $_ -notmatch "^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"
+    }
     $geoData = @{}
+    $ipCount = 0
     foreach ($ip in $uniqueIPs) {
-        if ($ip -and $ip -ne "-") {
-            $geoData[$ip] = Get-GeoIPInfo -IPAddress $ip
-        }
+        $ipCount++
+        if ($ipCount % 10 -eq 0) { Write-Host "    - $ipCount / $($uniqueIPs.Count) IP..." -ForegroundColor DarkGray }
+        $geoData[$ip] = Get-GeoIPInfo -IPAddress $ip
     }
     
-    # Ulke bazli istatistik
-    $countryStats = @{}
-    foreach ($conn in $failedLogons) {
-        $geo = $geoData[$conn.SourceIP]
-        $country = if ($geo -and $geo.Country) { $geo.Country } else { "Unknown" }
-        if (-not $countryStats[$country]) { $countryStats[$country] = 0 }
-        $countryStats[$country]++
-    }
-    $topCountries = $countryStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 5
+    Write-Host "  - Analiz yapiliyor..." -ForegroundColor Gray
     
-    # En cok saldiran IP'ler
+    # --- ISTATISTIKLER ---
+    $successCount = $successfulLogons.Count
+    $failedCount = $failedLogons.Count
+    $alertCount = $bruteForceAnalysis.Alerts.Count
+    $sessionCount = $sessions.Count
+    
+    # En cok saldiran IP'ler - GeoIP ile
     $ipStats = @{}
     foreach ($conn in $failedLogons) {
         $ip = $conn.SourceIP
-        if (-not $ipStats[$ip]) { $ipStats[$ip] = 0 }
-        $ipStats[$ip]++
-    }
-    $topAttackers = $ipStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10
-    
-    # Top Attackers tablosu
-    $topAttackersRows = ""
-    $rank = 1
-    foreach ($attacker in $topAttackers) {
-        $geo = $geoData[$attacker.Key]
-        $country = if ($geo -and $geo.Country) { $geo.Country } else { "Unknown" }
-        $city = if ($geo -and $geo.City) { $geo.City } else { "-" }
-        $isp = if ($geo -and $geo.ISP) { $geo.ISP } else { "-" }
-        $flagClass = if ($country -in @("China", "Russia", "North Korea", "Iran")) { "danger-row" } else { "" }
-        $topAttackersRows += "<tr class='$flagClass'><td>$rank</td><td><strong>$($attacker.Key)</strong></td><td>$country</td><td>$city</td><td>$isp</td><td class='attempt-count'>$($attacker.Value)</td></tr>`n"
-        $rank++
-    }
-    
-    # Ulke istatistik HTML
-    $countryStatsHtml = ""
-    foreach ($c in $topCountries) {
-        $percent = if ($failedLogons.Count -gt 0) { [math]::Round(($c.Value / $failedLogons.Count) * 100, 1) } else { 0 }
-        $countryStatsHtml += "<div class='country-bar'><span class='country-name'>$($c.Key)</span><div class='bar-container'><div class='bar' style='width: $percent%'></div></div><span class='country-count'>$($c.Value) (%$percent)</span></div>`n"
-    }
-    
-    # Basarili giris tablosu
-    $successTableRows = ""
-    $successfulLogons | Sort-Object TimeCreated -Descending | Select-Object -First 50 | ForEach-Object {
-        $geo = $geoData[$_.SourceIP]
-        $country = if ($geo -and $geo.Country) { $geo.Country } else { "Unknown" }
-        $city = if ($geo -and $geo.City) { $geo.City } else { "-" }
-        $isp = if ($geo -and $geo.ISP) { $geo.ISP } else { "-" }
-        $successTableRows += "<tr><td>$($_.TimeCreated.ToString('dd.MM.yyyy HH:mm:ss'))</td><td>$($_.Domain)\$($_.Username)</td><td>$($_.SourceIP)</td><td>$country, $city</td><td>$isp</td></tr>`n"
-    }
-    
-    # Aktif oturum tablosu
-    $sessionTableRows = ""
-    $sessions | ForEach-Object {
-        $stateClass = if ($_.State -eq "Active") { "state-active" } else { "state-disc" }
-        $sessionTableRows += "<tr><td><strong>$($_.Username)</strong></td><td>$($_.SessionID)</td><td class='$stateClass'>$($_.State)</td><td>$($_.IdleTime)</td><td>$($_.LogonTime)</td></tr>`n"
-    }
-    
-    # Alert tablosu - gruplu
-    $alertGroups = @{}
-    foreach ($alert in $bruteForceAnalysis.Alerts) {
-        $key = $alert.IP
-        if (-not $alertGroups[$key]) {
-            $alertGroups[$key] = @{ IP = $alert.IP; Country = $alert.Country; TotalAttempts = 0; AlertCount = 0 }
+        if ($ip -and $ip -ne "-") {
+            if (-not $ipStats.ContainsKey($ip)) {
+                # Onbellekte varsa kullan, yoksa sorgula
+                $geo = if ($geoData.ContainsKey($ip)) { $geoData[$ip] } else { Get-GeoIPInfo -IPAddress $ip }
+                $ipStats[$ip] = @{ 
+                    Count = 0
+                    Country = if ($geo.Country) { $geo.Country } else { "Unknown" }
+                    City = if ($geo.City) { $geo.City } else { "Unknown" }
+                    ISP = if ($geo.ISP) { $geo.ISP } else { "Unknown" }
+                    CountryCode = if ($geo.CountryCode) { $geo.CountryCode } else { "??" }
+                }
+            }
+            $ipStats[$ip].Count++
         }
-        $alertGroups[$key].TotalAttempts += $alert.AttemptCount
-        $alertGroups[$key].AlertCount++
     }
-    $groupedAlerts = $alertGroups.Values | Sort-Object TotalAttempts -Descending | Select-Object -First 15
+    $topAttackers = $ipStats.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending | Select-Object -First 15
+    $uniqueAttackerCount = $ipStats.Count
     
-    $alertsHtml = ""
-    if ($groupedAlerts.Count -gt 0) {
-        foreach ($a in $groupedAlerts) {
-            $geo = $geoData[$a.IP]
-            $isp = if ($geo -and $geo.ISP) { $geo.ISP } else { "-" }
-            $severityClass = if ($a.TotalAttempts -gt 1000) { "alert-critical" } elseif ($a.TotalAttempts -gt 100) { "alert-high" } else { "alert-medium" }
-            $alertsHtml += "<div class='alert-card $severityClass'><div class='alert-ip'>$($a.IP)</div><div class='alert-detail'><span class='alert-country'>$($a.Country)</span><span class='alert-isp'>$isp</span></div><div class='alert-count'>$($a.TotalAttempts) deneme</div></div>`n"
+    Write-Host "  - $uniqueAttackerCount farkli IP, toplam $failedCount basarisiz giris" -ForegroundColor Gray
+    
+    # Ulke dagilimi
+    $countryStats = @{}
+    foreach ($ip in $ipStats.Keys) {
+        $country = $ipStats[$ip].Country
+        if ($country -and $country -ne "Unknown") {
+            if (-not $countryStats.ContainsKey($country)) { $countryStats[$country] = 0 }
+            $countryStats[$country] += $ipStats[$ip].Count
         }
-    } else {
-        $alertsHtml = "<div class='no-alerts'>Son 24 saatte brute-force saldirisi tespit edilmedi.</div>"
     }
+    $topCountries = $countryStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 8
+    $totalCountryAttempts = ($topCountries | Measure-Object -Property Value -Sum).Sum
+    if ($totalCountryAttempts -eq 0) { $totalCountryAttempts = 1 }
     
-    # Zaman bazli analiz (saatlik dagilim)
+    # Saatlik dagilim
     $hourlyStats = @{}
-    0..23 | ForEach-Object { $hourlyStats[$_] = 0 }
+    for ($h = 0; $h -lt 24; $h++) { $hourlyStats[$h] = 0 }
     foreach ($conn in $failedLogons) {
         $hour = $conn.TimeCreated.Hour
         $hourlyStats[$hour]++
@@ -1252,154 +1030,498 @@ function New-DailyReport {
     $maxHourly = ($hourlyStats.Values | Measure-Object -Maximum).Maximum
     if ($maxHourly -eq 0) { $maxHourly = 1 }
     
-    $hourlyChartHtml = ""
-    0..23 | ForEach-Object {
-        $height = [math]::Round(($hourlyStats[$_] / $maxHourly) * 100)
-        $hourlyChartHtml += "<div class='hour-bar'><div class='hour-fill' style='height: $height%' title='$($hourlyStats[$_]) deneme'></div><span class='hour-label'>$_</span></div>`n"
+    # Hedeflenen kullanici adlari
+    $userStats = @{}
+    foreach ($conn in $failedLogons) {
+        $user = $conn.Username
+        if ($user) {
+            if (-not $userStats.ContainsKey($user)) { $userStats[$user] = 0 }
+            $userStats[$user]++
+        }
+    }
+    $topUsers = $userStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10
+    
+    # --- HTML TABLO SATIRLARI ---
+    
+    # Top Attackers
+    $topAttackersHtml = ""
+    $rank = 1
+    foreach ($attacker in $topAttackers) {
+        $dangerClass = if ($attacker.Value.CountryCode -in @("CN", "RU", "KP", "IR", "BD")) { "danger-row" } else { "" }
+        $topAttackersHtml += @"
+        <tr class="$dangerClass">
+            <td><span class="rank-badge">$rank</span></td>
+            <td class="mono">$($attacker.Key)</td>
+            <td>$($attacker.Value.Country)</td>
+            <td class="desktop-only">$($attacker.Value.City)</td>
+            <td class="desktop-only">$($attacker.Value.ISP)</td>
+            <td class="text-right text-danger"><strong>$($attacker.Value.Count)</strong></td>
+        </tr>
+"@
+        $rank++
+    }
+    if (-not $topAttackersHtml) {
+        $topAttackersHtml = "<tr><td colspan='6' class='empty-row'>Son 24 saatte saldiri tespit edilmedi</td></tr>"
     }
     
+    # Country distribution
+    $countryBarsHtml = ""
+    foreach ($country in $topCountries) {
+        $percent = [math]::Round(($country.Value / $totalCountryAttempts) * 100)
+        $countryBarsHtml += @"
+        <div class="country-item">
+            <div class="country-name">$($country.Key)</div>
+            <div class="country-bar-container">
+                <div class="country-bar" style="width: $percent%"></div>
+            </div>
+            <div class="country-count">$($country.Value)</div>
+        </div>
+"@
+    }
+    
+    # Hourly chart
+    $hourlyChartHtml = ""
+    for ($h = 0; $h -lt 24; $h++) {
+        $count = $hourlyStats[$h]
+        $height = if ($count -gt 0) { [math]::Round(($count / $maxHourly) * 100) } else { 0 }
+        $barClass = if ($count -gt ($maxHourly * 0.7)) { "bar-high" } elseif ($count -gt ($maxHourly * 0.3)) { "bar-medium" } else { "bar-low" }
+        $hourlyChartHtml += @"
+        <div class="hour-bar-wrapper">
+            <div class="hour-value">$count</div>
+            <div class="hour-bar $barClass" style="height: $(if($height -lt 3 -and $count -gt 0){3}else{$height})%"></div>
+            <div class="hour-label">$('{0:D2}' -f $h)</div>
+        </div>
+"@
+    }
+    
+    # Targeted usernames
+    $targetedUsersHtml = ""
+    $rank = 1
+    foreach ($user in $topUsers) {
+        $commonUsers = @("administrator", "admin", "sa", "root", "user", "guest", "test", "backup", "Administrator", "Admin")
+        $isCommon = $user.Key -in $commonUsers
+        $rowClass = if ($isCommon) { "common-user" } else { "real-user" }
+        $marker = if ($isCommon) { "<span class='badge badge-yellow'>YAYGIN</span>" } else { "<span class='badge badge-red'>DIKKAT</span>" }
+        $targetedUsersHtml += @"
+        <tr class="$rowClass">
+            <td>$rank</td>
+            <td><strong>$($user.Key)</strong> $marker</td>
+            <td class="text-right">$($user.Value)</td>
+        </tr>
+"@
+        $rank++
+    }
+    if (-not $targetedUsersHtml) {
+        $targetedUsersHtml = "<tr><td colspan='3' class='empty-row'>Hedeflenen kullanici adi yok</td></tr>"
+    }
+    
+    # Alerts
+    $alertsHtml = ""
+    if ($bruteForceAnalysis.Alerts.Count -gt 0) {
+        foreach ($alert in $bruteForceAnalysis.Alerts) {
+            $severityClass = switch ($alert.Severity) {
+                "CRITICAL" { "alert-critical" }
+                "HIGH" { "alert-high" }
+                default { "alert-medium" }
+            }
+            $alertsHtml += @"
+            <div class="alert-card $severityClass">
+                <div class="alert-header">
+                    <span class="alert-type">$($alert.Type)</span>
+                    <span class="alert-severity">$($alert.Severity)</span>
+                </div>
+                <div class="alert-body">
+                    <div class="alert-ip">$($alert.IP)</div>
+                    <div class="alert-geo">$($alert.Country), $($alert.City)</div>
+                    <div class="alert-isp">$($alert.ISP)</div>
+                </div>
+                <div class="alert-footer">
+                    <span><strong>$($alert.AttemptCount)</strong> deneme</span>
+                    <span>$($alert.TimeWindow)</span>
+                </div>
+            </div>
+"@
+        }
+    } else {
+        $alertsHtml = "<div class='no-alerts'>Son 24 saatte brute-force saldirisi tespit edilmedi</div>"
+    }
+    
+    # Successful logins
+    $successTableHtml = ""
+    $successfulLogons | Sort-Object TimeCreated -Descending | Select-Object -First 30 | ForEach-Object {
+        $geo = $geoData[$_.SourceIP]
+        $geoStr = if ($geo) { "$($geo.Country), $($geo.City)" } else { "Unknown" }
+        $ispStr = if ($geo) { $geo.ISP } else { "Unknown" }
+        $isLocal = $_.SourceIP -match "^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"
+        $rowClass = if ($isLocal) { "local-row" } else { "" }
+        $successTableHtml += @"
+        <tr class="$rowClass">
+            <td class="mono">$($_.TimeCreated.ToString('dd.MM HH:mm:ss'))</td>
+            <td><strong>$($_.Domain)\$($_.Username)</strong></td>
+            <td class="mono">$($_.SourceIP)</td>
+            <td>$geoStr</td>
+            <td class="desktop-only">$ispStr</td>
+        </tr>
+"@
+    }
+    if (-not $successTableHtml) {
+        $successTableHtml = "<tr><td colspan='5' class='empty-row'>Basarili giris yok</td></tr>"
+    }
+    
+    # Failed logins (detailed)
+    $failedTableHtml = ""
+    $failedLogons | Sort-Object TimeCreated -Descending | Select-Object -First 50 | ForEach-Object {
+        $geo = $geoData[$_.SourceIP]
+        $geoStr = if ($geo) { "$($geo.Country), $($geo.City)" } else { "Unknown" }
+        $ispStr = if ($geo) { $geo.ISP } else { "Unknown" }
+        $failedTableHtml += @"
+        <tr>
+            <td class="mono">$($_.TimeCreated.ToString('dd.MM HH:mm:ss'))</td>
+            <td>$($_.Domain)\$($_.Username)</td>
+            <td class="mono">$($_.SourceIP)</td>
+            <td>$geoStr</td>
+            <td class="desktop-only">$ispStr</td>
+        </tr>
+"@
+    }
+    if (-not $failedTableHtml) {
+        $failedTableHtml = "<tr><td colspan='5' class='empty-row'>Basarisiz giris yok</td></tr>"
+    }
+    
+    # Active sessions
+    $sessionsTableHtml = ""
+    foreach ($session in $sessions) {
+        $stateClass = switch ($session.State) {
+            "Active" { "state-active" }
+            "Disc" { "state-disc" }
+            default { "" }
+        }
+        $sessionsTableHtml += @"
+        <tr>
+            <td><strong>$($session.Username)</strong></td>
+            <td>$($session.SessionID)</td>
+            <td><span class="$stateClass">$($session.State)</span></td>
+            <td>$($session.IdleTime)</td>
+            <td>$($session.LogonTime)</td>
+        </tr>
+"@
+    }
+    if (-not $sessionsTableHtml) {
+        $sessionsTableHtml = "<tr><td colspan='5' class='empty-row'>Aktif oturum yok</td></tr>"
+    }
+    
+    # --- HTML TEMPLATE ---
     $html = @"
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <title>RDP Security Report - $reportDate</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDP Security - Gunluk Rapor - $reportDateStr</title>
     <style>
         :root {
-            --primary: #667eea;
-            --primary-dark: #5a67d8;
-            --success: #48bb78;
-            --danger: #f56565;
-            --warning: #ed8936;
-            --info: #4299e1;
-            --dark: #2d3748;
-            --light: #f7fafc;
-            --gray: #718096;
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-alt: #334155;
+            --bg-hover: #475569;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dark: #1e293b;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-orange: #f59e0b;
+            --accent-purple: #8b5cf6;
+            --border: #334155;
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
         }
         
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.6;
             min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
             padding: 20px;
         }
         
-        .container { max-width: 1400px; margin: 0 auto; }
-        
+        /* Header */
         .header {
-            background: rgba(255,255,255,0.95);
+            background: var(--gradient-1);
             border-radius: 16px;
             padding: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        }
-        
-        .header-top {
+            margin-bottom: 25px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 20px;
         }
         
-        .header h1 {
-            font-size: 1.8em;
-            color: var(--dark);
+        .header-left h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 5px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
         
-        .header h1::before {
+        .header-left h1::before {
             content: '';
-            display: inline-block;
-            width: 8px;
-            height: 32px;
-            background: linear-gradient(180deg, var(--primary) 0%, var(--danger) 100%);
-            border-radius: 4px;
+            width: 6px;
+            height: 35px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 3px;
         }
         
-        .server-info {
-            background: var(--light);
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 0.9em;
-            color: var(--gray);
+        .header-left p {
+            opacity: 0.9;
+            font-size: 0.95rem;
         }
         
-        .server-info strong { color: var(--dark); }
+        .header-right {
+            text-align: right;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
         
+        /* Summary Cards */
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
         
-        .stat-card {
-            background: white;
-            border-radius: 16px;
+        .summary-card {
+            background: var(--bg-card);
+            border-radius: 12px;
             padding: 25px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            position: relative;
-            overflow: hidden;
+            border: 1px solid var(--border);
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 4px;
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
         }
         
-        .stat-card.success::before { background: var(--success); }
-        .stat-card.danger::before { background: var(--danger); }
-        .stat-card.warning::before { background: var(--warning); }
-        .stat-card.info::before { background: var(--info); }
+        .summary-card h3 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
         
-        .stat-card h3 { font-size: 2.5em; font-weight: 700; margin-bottom: 5px; }
-        .stat-card.success h3 { color: var(--success); }
-        .stat-card.danger h3 { color: var(--danger); }
-        .stat-card.warning h3 { color: var(--warning); }
-        .stat-card.info h3 { color: var(--info); }
-        .stat-card p { color: var(--gray); font-size: 0.95em; }
+        .summary-card p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
         
+        .summary-card.success h3 { color: var(--accent-green); }
+        .summary-card.danger h3 { color: var(--accent-red); }
+        .summary-card.warning h3 { color: var(--accent-orange); }
+        .summary-card.info h3 { color: var(--accent-blue); }
+        .summary-card.purple h3 { color: var(--accent-purple); }
+        
+        /* Sections */
         .section {
-            background: white;
-            border-radius: 16px;
+            background: var(--bg-card);
+            border-radius: 12px;
             padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            border: 1px solid var(--border);
         }
         
         .section-title {
-            font-size: 1.2em;
-            color: var(--dark);
+            font-size: 1.1rem;
+            font-weight: 600;
             margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--light);
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
             display: flex;
             align-items: center;
             gap: 10px;
         }
         
-        .section-title .icon {
-            width: 28px; height: 28px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--accent-blue);
+            border-radius: 2px;
         }
         
-        .icon-danger { background: #fed7d7; color: var(--danger); }
-        .icon-success { background: #c6f6d5; color: var(--success); }
-        .icon-info { background: #bee3f8; color: var(--info); }
-        .icon-warning { background: #feebc8; color: var(--warning); }
+        /* Two Column Layout */
+        .two-col {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
         
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: rgba(0,0,0,0.3);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 14px 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        
+        tr:hover td {
+            background: var(--bg-hover);
+        }
+        
+        .mono {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: var(--accent-blue);
+        }
+        
+        .text-right { text-align: right; }
+        .text-danger { color: var(--accent-red); }
+        .text-success { color: var(--accent-green); }
+        
+        .rank-badge {
+            background: var(--bg-card-alt);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .danger-row td { background: rgba(239, 68, 68, 0.1); }
+        .local-row td { background: rgba(16, 185, 129, 0.1); }
+        .common-user td { background: rgba(245, 158, 11, 0.1); }
+        .real-user td { background: rgba(239, 68, 68, 0.1); }
+        
+        .empty-row {
+            text-align: center;
+            padding: 30px !important;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        
+        .badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .badge-yellow { background: var(--accent-orange); color: var(--text-dark); }
+        .badge-red { background: var(--accent-red); color: white; }
+        
+        .state-active { color: var(--accent-green); font-weight: 600; }
+        .state-disc { color: var(--accent-orange); }
+        
+        /* Country Bars */
+        .country-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .country-name {
+            width: 100px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .country-bar-container {
+            flex: 1;
+            height: 24px;
+            background: var(--bg-card-alt);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .country-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-red), var(--accent-orange));
+            border-radius: 6px;
+            min-width: 4px;
+        }
+        
+        .country-count {
+            width: 50px;
+            text-align: right;
+            font-weight: 600;
+            color: var(--accent-red);
+        }
+        
+        /* Hourly Chart */
+        .hourly-chart {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            height: 180px;
+            gap: 4px;
+            padding: 10px 0;
+        }
+        
+        .hour-bar-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+        }
+        
+        .hour-value {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            min-height: 14px;
+        }
+        
+        .hour-bar {
+            width: 100%;
+            border-radius: 4px 4px 0 0;
+            transition: height 0.3s ease;
+        }
+        
+        .bar-high { background: linear-gradient(180deg, var(--accent-red), #dc2626); }
+        .bar-medium { background: linear-gradient(180deg, var(--accent-orange), #d97706); }
+        .bar-low { background: linear-gradient(180deg, var(--accent-blue), #2563eb); }
+        
+        .hour-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+        
+        /* Alerts */
         .alerts-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1407,147 +1529,950 @@ function New-DailyReport {
         }
         
         .alert-card {
-            background: var(--light);
-            border-radius: 12px;
+            background: var(--bg-card-alt);
+            border-radius: 10px;
             padding: 15px;
-            border-left: 4px solid var(--warning);
+            border-left: 4px solid;
         }
         
-        .alert-critical { border-left-color: var(--danger); background: #fff5f5; }
-        .alert-high { border-left-color: var(--warning); background: #fffaf0; }
-        .alert-medium { border-left-color: var(--info); background: #ebf8ff; }
+        .alert-critical { border-color: var(--accent-red); }
+        .alert-high { border-color: var(--accent-orange); }
+        .alert-medium { border-color: var(--accent-blue); }
         
-        .alert-ip { font-family: 'Consolas', monospace; font-weight: 600; font-size: 1.1em; color: var(--dark); }
-        .alert-detail { display: flex; gap: 10px; margin: 8px 0; font-size: 0.85em; }
-        .alert-country { background: var(--dark); color: white; padding: 2px 8px; border-radius: 4px; }
-        .alert-isp { color: var(--gray); }
-        .alert-count { font-weight: 700; color: var(--danger); font-size: 1.1em; }
-        .no-alerts { text-align: center; padding: 40px; color: var(--success); font-size: 1.1em; }
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
         
-        table { width: 100%; border-collapse: collapse; }
-        th {
-            background: var(--dark);
-            color: white;
-            padding: 14px 12px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.85em;
+        .alert-type {
+            font-size: 0.75rem;
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
-        th:first-child { border-radius: 8px 0 0 0; }
-        th:last-child { border-radius: 0 8px 0 0; }
-        td { padding: 12px; border-bottom: 1px solid #edf2f7; font-size: 0.9em; }
-        tr:hover { background: #f7fafc; }
-        .danger-row { background: #fff5f5; }
-        .danger-row:hover { background: #fed7d7; }
-        .attempt-count { font-weight: 700; color: var(--danger); font-size: 1.1em; }
-        .state-active { color: var(--success); font-weight: 600; }
-        .state-disc { color: var(--warning); font-weight: 600; }
         
-        .country-bar { display: flex; align-items: center; margin-bottom: 12px; gap: 10px; }
-        .country-name { min-width: 100px; font-weight: 500; }
-        .bar-container { flex: 1; height: 24px; background: #edf2f7; border-radius: 12px; overflow: hidden; }
-        .bar { height: 100%; background: linear-gradient(90deg, var(--danger) 0%, var(--warning) 100%); border-radius: 12px; }
-        .country-count { min-width: 100px; text-align: right; font-weight: 600; color: var(--gray); }
+        .alert-severity {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--accent-red);
+            color: white;
+        }
         
-        .hourly-chart { display: flex; align-items: flex-end; height: 120px; gap: 4px; padding: 10px 0; }
-        .hour-bar { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
-        .hour-fill { width: 100%; background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%); border-radius: 4px 4px 0 0; min-height: 2px; }
-        .hour-label { font-size: 10px; color: var(--gray); margin-top: 5px; }
+        .alert-body .alert-ip {
+            font-family: monospace;
+            font-size: 1.1rem;
+            color: var(--accent-blue);
+            margin-bottom: 5px;
+        }
         
-        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+        .alert-body .alert-geo,
+        .alert-body .alert-isp {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
         
-        .footer { text-align: center; padding: 20px; color: rgba(255,255,255,0.8); font-size: 0.9em; }
-        .footer a { color: white; text-decoration: none; }
+        .alert-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        
+        .alert-footer strong {
+            color: var(--accent-red);
+        }
+        
+        .no-alerts {
+            text-align: center;
+            padding: 40px;
+            color: var(--accent-green);
+            font-size: 1rem;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 25px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            margin-top: 20px;
+        }
+        
+        .footer a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header { flex-direction: column; text-align: center; }
+            .header-right { text-align: center; }
+            .two-col { grid-template-columns: 1fr; }
+            .desktop-only { display: none; }
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .hourly-chart { overflow-x: auto; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Header -->
         <div class="header">
-            <div class="header-top">
-                <h1>RDP Security Intelligence</h1>
-                <div class="server-info">
-                    <strong>$env:COMPUTERNAME</strong> | $reportDate $(Get-Date -Format "HH:mm")
+            <div class="header-left">
+                <h1>Gunluk Guvenlik Raporu</h1>
+                <p>RDP Security Intelligence System v3.0</p>
+            </div>
+            <div class="header-right">
+                <strong>$env:COMPUTERNAME</strong><br>
+                $reportDateStr<br>
+                $(Get-Date -Format "HH:mm")
+            </div>
+        </div>
+        
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card success">
+                <h3>$successCount</h3>
+                <p>Basarili Giris</p>
+            </div>
+            <div class="summary-card danger">
+                <h3>$failedCount</h3>
+                <p>Basarisiz Deneme</p>
+            </div>
+            <div class="summary-card warning">
+                <h3>$uniqueAttackerCount</h3>
+                <p>Farkli Saldirgan</p>
+            </div>
+            <div class="summary-card info">
+                <h3>$sessionCount</h3>
+                <p>Aktif Oturum</p>
+            </div>
+            <div class="summary-card purple">
+                <h3>$alertCount</h3>
+                <p>Guvenlik Alarmi</p>
+            </div>
+        </div>
+        
+        <!-- Alerts Section -->
+        <div class="section">
+            <div class="section-title">Guvenlik Alarmlari</div>
+            <div class="alerts-grid">
+                $alertsHtml
+            </div>
+        </div>
+        
+        <!-- Top Attackers -->
+        <div class="section">
+            <div class="section-title">En Cok Saldiran IP Adresleri (Top 15)</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="50">#</th>
+                        <th>IP Adresi</th>
+                        <th>Ulke</th>
+                        <th class="desktop-only">Sehir</th>
+                        <th class="desktop-only">ISP</th>
+                        <th class="text-right">Deneme</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $topAttackersHtml
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Two Column: Country & Hourly -->
+        <div class="two-col">
+            <div class="section">
+                <div class="section-title">Ulke Dagilimi</div>
+                $countryBarsHtml
+            </div>
+            <div class="section">
+                <div class="section-title">Saatlik Saldiri Yogunlugu (24 Saat)</div>
+                <div class="hourly-chart">
+                    $hourlyChartHtml
                 </div>
             </div>
         </div>
         
-        <div class="summary-grid">
-            <div class="stat-card success">
-                <h3>$($successfulLogons.Count)</h3>
-                <p>Basarili Giris</p>
-            </div>
-            <div class="stat-card danger">
-                <h3>$($failedLogons.Count)</h3>
-                <p>Basarisiz Deneme</p>
-            </div>
-            <div class="stat-card info">
-                <h3>$($sessions.Count)</h3>
-                <p>Aktif Oturum</p>
-            </div>
-            <div class="stat-card warning">
-                <h3>$($groupedAlerts.Count)</h3>
-                <p>Tehdit Kaynagi</p>
-            </div>
-        </div>
-        
-        <div class="section">
-            <h2 class="section-title"><span class="icon icon-danger">!</span> En Cok Saldiran IP'ler</h2>
-            <table>
-                <tr><th>#</th><th>IP Adresi</th><th>Ulke</th><th>Sehir</th><th>ISP</th><th>Deneme</th></tr>
-                $topAttackersRows
-            </table>
-        </div>
-        
+        <!-- Two Column: Targeted Users & Active Sessions -->
         <div class="two-col">
             <div class="section">
-                <h2 class="section-title"><span class="icon icon-warning">*</span> Ulke Dagilimi</h2>
-                $countryStatsHtml
+                <div class="section-title">Hedeflenen Kullanici Adlari</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="40">#</th>
+                            <th>Kullanici Adi</th>
+                            <th class="text-right">Deneme</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $targetedUsersHtml
+                    </tbody>
+                </table>
             </div>
             <div class="section">
-                <h2 class="section-title"><span class="icon icon-info">~</span> Saatlik Dagilim</h2>
-                <div class="hourly-chart">$hourlyChartHtml</div>
+                <div class="section-title">Aktif Oturumlar</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Kullanici</th>
+                            <th>Session</th>
+                            <th>Durum</th>
+                            <th>Bosta</th>
+                            <th>Giris</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $sessionsTableHtml
+                    </tbody>
+                </table>
             </div>
         </div>
         
+        <!-- Successful Logins -->
         <div class="section">
-            <h2 class="section-title"><span class="icon icon-danger">!</span> Guvenlik Uyarilari</h2>
-            <div class="alerts-grid">$alertsHtml</div>
-        </div>
-        
-        <div class="section">
-            <h2 class="section-title"><span class="icon icon-success">+</span> Basarili Girisler</h2>
+            <div class="section-title">Basarili Girisler (Son 30)</div>
             <table>
-                <tr><th>Zaman</th><th>Kullanici</th><th>IP Adresi</th><th>Konum</th><th>ISP</th></tr>
-                $successTableRows
+                <thead>
+                    <tr>
+                        <th>Zaman</th>
+                        <th>Kullanici</th>
+                        <th>IP Adresi</th>
+                        <th>Konum</th>
+                        <th class="desktop-only">ISP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $successTableHtml
+                </tbody>
             </table>
         </div>
         
+        <!-- Failed Logins -->
         <div class="section">
-            <h2 class="section-title"><span class="icon icon-info">i</span> Aktif Oturumlar</h2>
+            <div class="section-title">Basarisiz Denemeler (Son 50)</div>
             <table>
-                <tr><th>Kullanici</th><th>Session ID</th><th>Durum</th><th>Bosta</th><th>Giris Zamani</th></tr>
-                $sessionTableRows
+                <thead>
+                    <tr>
+                        <th>Zaman</th>
+                        <th>Kullanici</th>
+                        <th>IP Adresi</th>
+                        <th>Konum</th>
+                        <th class="desktop-only">ISP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $failedTableHtml
+                </tbody>
             </table>
         </div>
         
+        <!-- Footer -->
         <div class="footer">
-            RDP Security Intelligence System | <a href="https://github.com/frkndncr/rdp-security-intelligence">GitHub</a>
+            RDP Security Intelligence System v3.0 | 
+            Olusturulma: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") |
+            <a href="https://github.com/furkandncer">GitHub</a>
         </div>
     </div>
 </body>
 </html>
 "@
     
-    $html | Out-File -FilePath $reportPath -Encoding UTF8
+    # UTF-8 BOM olmadan kaydet
+    try {
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($reportPath, $html, $utf8NoBom)
+        Write-Host "[+] Gunluk rapor olusturuldu: $reportPath" -ForegroundColor Green
+    }
+    catch {
+        $html | Out-File -FilePath $reportPath -Encoding UTF8
+        Write-Host "[+] Gunluk rapor olusturuldu: $reportPath" -ForegroundColor Green
+    }
+    
     Write-SecurityLog -LogType "Alert" -Message "Daily report generated" -Severity "INFO" -Data @{Path = $reportPath}
-    Write-Host "[+] Rapor olusturuldu: $reportPath" -ForegroundColor Green
     return $reportPath
 }
 
-# ==================== MONITORING SERVICE ====================
+
+function New-WeeklyReport {
+    param([DateTime]$TargetDate = (Get-Date))
+    
+    $reportDateStr = $TargetDate.ToString("yyyy-MM-dd")
+    $weekStart = $TargetDate.AddDays(-7)
+    $reportPath = Join-Path $Config.ReportPath "weekly_report_$reportDateStr.html"
+    
+    Write-Host "[*] Haftalik rapor hazirlaniyor..." -ForegroundColor Cyan
+    Write-Host "  - Tarih araligi: $($weekStart.ToString('dd.MM.yyyy')) - $($TargetDate.ToString('dd.MM.yyyy'))" -ForegroundColor Gray
+    
+    # --- EVENT LOG'DAN VERI CEKME (OPTIMIZE) ---
+    Write-Host "  - Event Log okunuyor..." -ForegroundColor Gray
+    
+    $allSuccessful = @()
+    $allFailed = @()
+    
+    # Basarili RDP girisleri
+    try {
+        Write-Host "    - Basarili girisler okunuyor..." -ForegroundColor DarkGray
+        $allSuccessful = @(Get-WinEvent -FilterHashtable @{
+            LogName   = 'Security'
+            ID        = 4624
+            StartTime = $weekStart
+        } -MaxEvents 5000 -ErrorAction SilentlyContinue | Where-Object {
+            $_.Properties[8].Value -eq 10
+        })
+        Write-Host "    - Basarili RDP giris: $($allSuccessful.Count)" -ForegroundColor Green
+    } catch {
+        Write-Host "    - Basarili giris: 0 (log bos veya hata)" -ForegroundColor Yellow
+        $allSuccessful = @()
+    }
+    
+    # Basarisiz girisler - LIMITLI cek (cok fazla olabilir)
+    try {
+        Write-Host "    - Basarisiz girisler okunuyor (max 50000)..." -ForegroundColor DarkGray
+        $allFailed = @(Get-WinEvent -FilterHashtable @{
+            LogName   = 'Security'
+            ID        = 4625
+            StartTime = $weekStart
+        } -MaxEvents 50000 -ErrorAction SilentlyContinue)
+        Write-Host "    - Basarisiz giris: $($allFailed.Count)" -ForegroundColor Red
+    } catch {
+        Write-Host "    - Basarisiz giris: 0 (log bos veya hata)" -ForegroundColor Yellow
+        $allFailed = @()
+    }
+    
+    # --- GUNLUK ISTATISTIKLER ---
+    Write-Host "  - Gunluk istatistikler hesaplaniyor..." -ForegroundColor Gray
+    
+    $dailyStats = @{}
+    $dayNames = @{ "Monday"="Pzt"; "Tuesday"="Sal"; "Wednesday"="Car"; "Thursday"="Per"; "Friday"="Cum"; "Saturday"="Cmt"; "Sunday"="Paz" }
+    
+    for ($i = 6; $i -ge 0; $i--) {
+        $d = $TargetDate.AddDays(-$i)
+        $dateStr = $d.ToString("yyyy-MM-dd")
+        $dayLabel = $dayNames[$d.DayOfWeek.ToString()]
+        $dailyStats[$dateStr] = @{ 
+            Success = 0
+            Failed = 0
+            Label = $dayLabel
+            Date = $dateStr
+            ShortDate = $d.ToString("dd.MM")
+        }
+    }
+    
+    # Basarili girisleri gunlere dagit
+    foreach ($event in $allSuccessful) {
+        $dateKey = $event.TimeCreated.ToString("yyyy-MM-dd")
+        if ($dailyStats.ContainsKey($dateKey)) {
+            $dailyStats[$dateKey].Success++
+        }
+    }
+    
+    # Basarisiz girisleri gunlere dagit
+    foreach ($event in $allFailed) {
+        $dateKey = $event.TimeCreated.ToString("yyyy-MM-dd")
+        if ($dailyStats.ContainsKey($dateKey)) {
+            $dailyStats[$dateKey].Failed++
+        }
+    }
+    
+    # --- IP VE GEOIP ANALIZI ---
+    Write-Host "  - IP analizi ve GeoIP sorgulari..." -ForegroundColor Gray
+    
+    $ipStats = @{}
+    $userStats = @{}
+    $hourlyStats = @{}
+    for ($h = 0; $h -lt 24; $h++) { $hourlyStats[$h] = 0 }
+    
+    foreach ($event in $allFailed) {
+        $sourceIP = $event.Properties[19].Value
+        $username = $event.Properties[5].Value
+        $hour = $event.TimeCreated.Hour
+        
+        # Saatlik dagilim
+        $hourlyStats[$hour]++
+        
+        # IP istatistikleri
+        if ($sourceIP -and $sourceIP -ne "-") {
+            if (-not $ipStats.ContainsKey($sourceIP)) {
+                $ipStats[$sourceIP] = @{ Count = 0; FirstSeen = $event.TimeCreated; LastSeen = $event.TimeCreated }
+            }
+            $ipStats[$sourceIP].Count++
+            if ($event.TimeCreated -lt $ipStats[$sourceIP].FirstSeen) { $ipStats[$sourceIP].FirstSeen = $event.TimeCreated }
+            if ($event.TimeCreated -gt $ipStats[$sourceIP].LastSeen) { $ipStats[$sourceIP].LastSeen = $event.TimeCreated }
+        }
+        
+        # Kullanici istatistikleri
+        if ($username) {
+            if (-not $userStats.ContainsKey($username)) { $userStats[$username] = 0 }
+            $userStats[$username]++
+        }
+    }
+    
+    # Top 20 IP icin GeoIP sorgula
+    $topIPsForGeo = $ipStats.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending | Select-Object -First 20
+    $geoCache = @{}
+    $geoCount = 0
+    foreach ($ipEntry in $topIPsForGeo) {
+        $geoCount++
+        Write-Host "    - GeoIP $geoCount/20: $($ipEntry.Key)..." -ForegroundColor DarkGray
+        $geo = Get-GeoIPInfo -IPAddress $ipEntry.Key
+        $geoCache[$ipEntry.Key] = $geo
+        $ipStats[$ipEntry.Key].Country = $geo.Country
+        $ipStats[$ipEntry.Key].City = $geo.City
+        $ipStats[$ipEntry.Key].ISP = $geo.ISP
+        $ipStats[$ipEntry.Key].CountryCode = $geo.CountryCode
+    }
+    
+    # --- HESAPLAMALAR ---
+    $totalSuccess = 0
+    $totalFailed = 0
+    foreach ($day in $dailyStats.Keys) {
+        $totalSuccess += $dailyStats[$day].Success
+        $totalFailed += $dailyStats[$day].Failed
+    }
+    
+    $uniqueAttackerCount = $ipStats.Count
+    $topAttackers = $ipStats.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending | Select-Object -First 15
+    $topUsers = $userStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 15
+    
+    # Ulke dagilimi
+    $countryStats = @{}
+    foreach ($ipEntry in $topIPsForGeo) {
+        $country = $ipStats[$ipEntry.Key].Country
+        if ($country -and $country -ne "Unknown" -and $country -ne "Local/Private") {
+            if (-not $countryStats.ContainsKey($country)) { $countryStats[$country] = 0 }
+            $countryStats[$country] += $ipStats[$ipEntry.Key].Count
+        }
+    }
+    $topCountries = $countryStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10
+    $totalCountryAttempts = ($topCountries | Measure-Object -Property Value -Sum).Sum
+    if (-not $totalCountryAttempts -or $totalCountryAttempts -eq 0) { $totalCountryAttempts = 1 }
+    
+    # En yogun saat
+    $peakHour = ($hourlyStats.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
+    $peakHourCount = $hourlyStats[$peakHour]
+    $maxHourly = ($hourlyStats.Values | Measure-Object -Maximum).Maximum
+    if (-not $maxHourly -or $maxHourly -eq 0) { $maxHourly = 1 }
+    
+    # En aktif gun
+    $peakDay = ($dailyStats.GetEnumerator() | Sort-Object { $_.Value.Failed } -Descending | Select-Object -First 1)
+    
+    Write-Host "  - HTML olusturuluyor..." -ForegroundColor Gray
+    
+    # --- HTML ELEMANLARI ---
+    
+    # Gunluk trend chart
+    $maxDailyVal = ($dailyStats.Values | ForEach-Object { $_.Success + $_.Failed } | Measure-Object -Maximum).Maximum
+    if (-not $maxDailyVal -or $maxDailyVal -eq 0) { $maxDailyVal = 1 }
+    
+    $dailyChartHtml = ""
+    foreach ($stat in ($dailyStats.Values | Sort-Object Date)) {
+        $total = $stat.Success + $stat.Failed
+        $failedHeight = if ($stat.Failed -gt 0) { [math]::Round(($stat.Failed / $maxDailyVal) * 100) } else { 0 }
+        $successHeight = if ($stat.Success -gt 0) { [math]::Round(($stat.Success / $maxDailyVal) * 100) } else { 0 }
+        
+        $dailyChartHtml += @"
+        <div class="day-column">
+            <div class="day-values">
+                <span class="failed-val">$($stat.Failed)</span>
+                <span class="success-val">$($stat.Success)</span>
+            </div>
+            <div class="stacked-bar">
+                <div class="bar-failed" style="height: $(if($failedHeight -lt 2 -and $stat.Failed -gt 0){2}else{$failedHeight})%"></div>
+                <div class="bar-success" style="height: $(if($successHeight -lt 2 -and $stat.Success -gt 0){2}else{$successHeight})%"></div>
+            </div>
+            <div class="day-label">$($stat.Label)</div>
+            <div class="day-date">$($stat.ShortDate)</div>
+        </div>
+"@
+    }
+    
+    # Saatlik chart
+    $hourlyChartHtml = ""
+    for ($h = 0; $h -lt 24; $h++) {
+        $count = $hourlyStats[$h]
+        $height = if ($count -gt 0) { [math]::Round(($count / $maxHourly) * 100) } else { 0 }
+        $barClass = if ($h -eq $peakHour) { "bar-peak" } elseif ($count -gt ($maxHourly * 0.5)) { "bar-high" } elseif ($count -gt 0) { "bar-normal" } else { "bar-zero" }
+        $hourlyChartHtml += @"
+        <div class="hour-col">
+            <div class="hour-val">$(if($count -gt 0){$count}else{''})</div>
+            <div class="hour-bar $barClass" style="height: $(if($height -lt 2 -and $count -gt 0){2}else{$height})%"></div>
+            <div class="hour-lbl">$('{0:D2}' -f $h)</div>
+        </div>
+"@
+    }
+    
+    # Top attackers table
+    $topAttackersHtml = ""
+    $rank = 1
+    foreach ($attacker in $topAttackers) {
+        $geo = if ($geoCache.ContainsKey($attacker.Key)) { $geoCache[$attacker.Key] } else { @{Country="?";City="?";ISP="?"} }
+        $countryDisplay = if ($attacker.Value.Country) { $attacker.Value.Country } else { $geo.Country }
+        $cityDisplay = if ($attacker.Value.City) { $attacker.Value.City } else { $geo.City }
+        $ispDisplay = if ($attacker.Value.ISP) { $attacker.Value.ISP } else { $geo.ISP }
+        $dangerCountries = @("CN", "RU", "KP", "IR", "BD", "VN", "IN", "PK", "BR")
+        $countryCode = if ($attacker.Value.CountryCode) { $attacker.Value.CountryCode } else { "??" }
+        $rowClass = if ($countryCode -in $dangerCountries) { "danger-row" } else { "" }
+        $duration = if ($attacker.Value.FirstSeen -and $attacker.Value.LastSeen) {
+            $span = $attacker.Value.LastSeen - $attacker.Value.FirstSeen
+            if ($span.TotalDays -ge 1) { "$([math]::Round($span.TotalDays,1)) gun" }
+            elseif ($span.TotalHours -ge 1) { "$([math]::Round($span.TotalHours,1)) saat" }
+            else { "$([math]::Round($span.TotalMinutes,0)) dk" }
+        } else { "-" }
+        
+        $topAttackersHtml += @"
+        <tr class="$rowClass">
+            <td><span class="rank-badge">$rank</span></td>
+            <td class="mono">$($attacker.Key)</td>
+            <td>$countryDisplay</td>
+            <td class="desktop-only">$cityDisplay</td>
+            <td class="desktop-only">$ispDisplay</td>
+            <td class="desktop-only">$duration</td>
+            <td class="text-right text-danger"><strong>$($attacker.Value.Count)</strong></td>
+        </tr>
+"@
+        $rank++
+    }
+    if (-not $topAttackersHtml) {
+        $topAttackersHtml = "<tr><td colspan='7' class='empty-row'>Bu hafta saldiri tespit edilmedi</td></tr>"
+    }
+    
+    # Top targeted users
+    $topUsersHtml = ""
+    $rank = 1
+    $commonUsers = @("administrator", "admin", "sa", "root", "user", "guest", "test", "backup", "Administrator", "Admin", "ADMIN", "ROOT", "USER")
+    foreach ($user in $topUsers) {
+        $isCommon = $user.Key -in $commonUsers -or $user.Key -match "^(admin|user|test|guest)"
+        $rowClass = if ($isCommon) { "common-user" } else { "real-user" }
+        $badge = if ($isCommon) { "<span class='badge badge-yellow'>YAYGIN</span>" } else { "<span class='badge badge-red'>HEDEF</span>" }
+        $topUsersHtml += @"
+        <tr class="$rowClass">
+            <td>$rank</td>
+            <td><strong>$($user.Key)</strong> $badge</td>
+            <td class="text-right text-danger">$($user.Value)</td>
+        </tr>
+"@
+        $rank++
+    }
+    if (-not $topUsersHtml) {
+        $topUsersHtml = "<tr><td colspan='3' class='empty-row'>Hedeflenen kullanici adi yok</td></tr>"
+    }
+    
+    # Country bars
+    $countryBarsHtml = ""
+    foreach ($country in $topCountries) {
+        $percent = [math]::Round(($country.Value / $totalCountryAttempts) * 100)
+        $countryBarsHtml += @"
+        <div class="country-row">
+            <div class="country-name">$($country.Key)</div>
+            <div class="country-bar-bg">
+                <div class="country-bar-fill" style="width: $percent%"></div>
+            </div>
+            <div class="country-stats">
+                <span class="country-count">$($country.Value)</span>
+                <span class="country-pct">$percent%</span>
+            </div>
+        </div>
+"@
+    }
+    if (-not $countryBarsHtml) {
+        $countryBarsHtml = "<div class='empty-row'>Ulke verisi yok</div>"
+    }
+    
+    # --- HTML TEMPLATE ---
+    $html = @"
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haftalik Guvenlik Raporu - $reportDateStr</title>
+    <style>
+        :root {
+            --bg-body: #0a0f1a;
+            --bg-card: #131b2e;
+            --bg-card-alt: #1a2744;
+            --bg-hover: #243656;
+            --text-main: #e8edf5;
+            --text-muted: #8892a6;
+            --text-dark: #0a0f1a;
+            --accent-blue: #4f8cff;
+            --accent-green: #00d68f;
+            --accent-red: #ff4757;
+            --accent-orange: #ffa502;
+            --accent-purple: #a855f7;
+            --accent-cyan: #00d9ff;
+            --border: #2a3a5a;
+            --gradient-header: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 50%, #db2777 100%);
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-body); color: var(--text-main); line-height: 1.6; }
+        .container { max-width: 1500px; margin: 0 auto; padding: 20px; }
+        
+        /* Header */
+        .header {
+            background: var(--gradient-header);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            opacity: 0.3;
+        }
+        .header-content { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .header h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        .header p { opacity: 0.9; font-size: 1.1rem; }
+        .header-right { text-align: right; }
+        .header-right .server-name { font-size: 1.3rem; font-weight: 700; }
+        .header-right .date-range { opacity: 0.85; margin-top: 5px; }
+        
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .summary-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid var(--border);
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .summary-card:hover { transform: translateY(-5px); box-shadow: 0 15px 40px rgba(0,0,0,0.4); }
+        .summary-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            border-radius: 16px 16px 0 0;
+        }
+        .summary-card.green::before { background: var(--accent-green); }
+        .summary-card.red::before { background: var(--accent-red); }
+        .summary-card.orange::before { background: var(--accent-orange); }
+        .summary-card.blue::before { background: var(--accent-blue); }
+        .summary-card.purple::before { background: var(--accent-purple); }
+        .summary-card.cyan::before { background: var(--accent-cyan); }
+        .summary-card h3 { font-size: 2.8rem; font-weight: 800; margin-bottom: 5px; }
+        .summary-card.green h3 { color: var(--accent-green); }
+        .summary-card.red h3 { color: var(--accent-red); }
+        .summary-card.orange h3 { color: var(--accent-orange); }
+        .summary-card.blue h3 { color: var(--accent-blue); }
+        .summary-card.purple h3 { color: var(--accent-purple); }
+        .summary-card.cyan h3 { color: var(--accent-cyan); }
+        .summary-card p { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+        .summary-card .subtext { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
+        
+        /* Sections */
+        .section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 25px;
+            border: 1px solid var(--border);
+        }
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .section-title::before {
+            content: '';
+            width: 5px;
+            height: 24px;
+            background: var(--accent-purple);
+            border-radius: 3px;
+        }
+        
+        /* Daily Trend Chart */
+        .daily-trend {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 280px;
+            padding: 20px 0;
+            gap: 10px;
+        }
+        .day-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 120px;
+        }
+        .day-values {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .failed-val { color: var(--accent-red); }
+        .success-val { color: var(--accent-green); }
+        .stacked-bar {
+            width: 100%;
+            height: 180px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            gap: 2px;
+        }
+        .bar-failed {
+            width: 100%;
+            background: linear-gradient(180deg, var(--accent-red), #c0392b);
+            border-radius: 6px 6px 0 0;
+            min-height: 0;
+        }
+        .bar-success {
+            width: 100%;
+            background: linear-gradient(180deg, var(--accent-green), #00a86b);
+            border-radius: 0 0 6px 6px;
+            min-height: 0;
+        }
+        .day-label { margin-top: 12px; font-weight: 700; font-size: 1rem; }
+        .day-date { font-size: 0.75rem; color: var(--text-muted); }
+        
+        /* Hourly Chart */
+        .hourly-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 160px;
+            gap: 3px;
+            padding: 10px 0;
+        }
+        .hour-col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+        .hour-val { font-size: 0.6rem; color: var(--text-muted); margin-bottom: 4px; min-height: 12px; }
+        .hour-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+        .bar-peak { background: var(--accent-red); }
+        .bar-high { background: var(--accent-orange); }
+        .bar-normal { background: var(--accent-blue); }
+        .bar-zero { background: var(--bg-card-alt); min-height: 2px; }
+        .hour-lbl { font-size: 0.6rem; color: var(--text-muted); margin-top: 6px; }
+        
+        /* Tables */
+        .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 25px; margin-bottom: 25px; }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            background: rgba(0,0,0,0.4);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 700;
+        }
+        td { padding: 14px 12px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+        tr:hover td { background: var(--bg-hover); }
+        .mono { font-family: 'Consolas', monospace; color: var(--accent-cyan); }
+        .text-right { text-align: right; }
+        .text-danger { color: var(--accent-red); }
+        .rank-badge { background: var(--bg-card-alt); padding: 5px 12px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; }
+        .danger-row td { background: rgba(255, 71, 87, 0.1); }
+        .common-user td { background: rgba(255, 165, 2, 0.1); }
+        .real-user td { background: rgba(255, 71, 87, 0.15); }
+        .empty-row { text-align: center; padding: 40px !important; color: var(--text-muted); font-style: italic; }
+        .badge { padding: 3px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; margin-left: 10px; }
+        .badge-yellow { background: var(--accent-orange); color: var(--text-dark); }
+        .badge-red { background: var(--accent-red); color: white; }
+        
+        /* Country Bars */
+        .country-row { display: flex; align-items: center; gap: 15px; margin-bottom: 16px; }
+        .country-name { width: 120px; font-size: 0.9rem; font-weight: 600; }
+        .country-bar-bg { flex: 1; height: 28px; background: var(--bg-card-alt); border-radius: 8px; overflow: hidden; }
+        .country-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-orange)); border-radius: 8px; }
+        .country-stats { display: flex; gap: 10px; width: 100px; justify-content: flex-end; }
+        .country-count { font-weight: 700; color: var(--accent-red); }
+        .country-pct { color: var(--text-muted); font-size: 0.85rem; }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 30px;
+        }
+        .footer a { color: var(--accent-blue); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        
+        @media (max-width: 768px) {
+            .header { padding: 25px; }
+            .header h1 { font-size: 1.5rem; }
+            .header-content { flex-direction: column; text-align: center; }
+            .header-right { text-align: center; }
+            .two-col { grid-template-columns: 1fr; }
+            .desktop-only { display: none; }
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .daily-trend { height: 200px; }
+            .stacked-bar { height: 120px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <div>
+                    <h1>Haftalik Guvenlik Raporu</h1>
+                    <p>RDP Security Intelligence System v3.0</p>
+                </div>
+                <div class="header-right">
+                    <div class="server-name">$env:COMPUTERNAME</div>
+                    <div class="date-range">$($weekStart.ToString('dd.MM.yyyy')) - $($TargetDate.ToString('dd.MM.yyyy'))</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="summary-grid">
+            <div class="summary-card green">
+                <h3>$totalSuccess</h3>
+                <p>Basarili Giris</p>
+                <div class="subtext">7 gunluk toplam</div>
+            </div>
+            <div class="summary-card red">
+                <h3>$totalFailed</h3>
+                <p>Basarisiz Deneme</p>
+                <div class="subtext">Engellenen saldiri</div>
+            </div>
+            <div class="summary-card orange">
+                <h3>$uniqueAttackerCount</h3>
+                <p>Farkli IP</p>
+                <div class="subtext">Benzersiz saldirgan</div>
+            </div>
+            <div class="summary-card blue">
+                <h3>$($peakHour):00</h3>
+                <p>En Yogun Saat</p>
+                <div class="subtext">$peakHourCount saldiri</div>
+            </div>
+            <div class="summary-card purple">
+                <h3>$($peakDay.Value.Label)</h3>
+                <p>En Aktif Gun</p>
+                <div class="subtext">$($peakDay.Value.Failed) saldiri</div>
+            </div>
+            <div class="summary-card cyan">
+                <h3>$($topCountries.Count)</h3>
+                <p>Farkli Ulke</p>
+                <div class="subtext">Saldiri kaynagi</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">7 Gunluk Aktivite Trendi</div>
+            <div class="daily-trend">
+                $dailyChartHtml
+            </div>
+            <div style="display: flex; justify-content: center; gap: 30px; margin-top: 15px; font-size: 0.85rem;">
+                <span><span style="color: var(--accent-red);">■</span> Basarisiz Giris</span>
+                <span><span style="color: var(--accent-green);">■</span> Basarili Giris</span>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Saatlik Saldiri Dagilimi (24 Saat Ortalama)</div>
+            <div class="hourly-chart">
+                $hourlyChartHtml
+            </div>
+            <div style="text-align: center; margin-top: 10px; font-size: 0.8rem; color: var(--text-muted);">
+                En yogun saat: <strong style="color: var(--accent-red);">$($peakHour):00</strong> ($peakHourCount saldiri)
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">En Cok Saldiran IP Adresleri (Top 15)</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th width="50">#</th>
+                        <th>IP Adresi</th>
+                        <th>Ulke</th>
+                        <th class="desktop-only">Sehir</th>
+                        <th class="desktop-only">ISP</th>
+                        <th class="desktop-only">Sure</th>
+                        <th class="text-right">Deneme</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    $topAttackersHtml
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="two-col">
+            <div class="section">
+                <div class="section-title">Saldiri Kaynak Ulkeleri</div>
+                $countryBarsHtml
+            </div>
+            <div class="section">
+                <div class="section-title">Hedeflenen Kullanici Adlari (Top 15)</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="40">#</th>
+                            <th>Kullanici Adi</th>
+                            <th class="text-right">Deneme</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $topUsersHtml
+                    </tbody>
+                </table>
+                <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-muted);">
+                    <span style="background: rgba(255,165,2,0.2); padding: 2px 8px; border-radius: 4px;">YAYGIN</span> = Bilinen default kullanici adi
+                    <span style="background: rgba(255,71,87,0.2); padding: 2px 8px; border-radius: 4px; margin-left: 10px;">HEDEF</span> = Gercek hesap olabilir
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            RDP Security Intelligence System v3.0 |
+            Rapor: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") |
+            <a href="https://github.com/furkandncer">GitHub</a>
+        </div>
+    </div>
+</body>
+</html>
+"@
+    
+    # --- DOSYA KAYDET ---
+    try {
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($reportPath, $html, $utf8NoBom)
+        Write-Host "[+] Haftalik rapor olusturuldu: $reportPath" -ForegroundColor Green
+    }
+    catch {
+        $html | Out-File -FilePath $reportPath -Encoding UTF8
+        Write-Host "[+] Haftalik rapor olusturuldu: $reportPath" -ForegroundColor Green
+    }
+    
+    Write-SecurityLog -LogType "Alert" -Message "Weekly report generated" -Severity "INFO" -Data @{Path = $reportPath}
+    return $reportPath
+}
+
 
 function Start-RDPMonitoringService {
     param([switch]$Verbose)
@@ -1580,7 +2505,7 @@ function Start-RDPMonitoringService {
                 ID        = @(4624, 4625)
                 StartTime = $lastEventTime
             } -ErrorAction SilentlyContinue | Where-Object {
-                ($_.Properties[8].Value -eq 10) -or ($_.Properties[10].Value -eq 10)
+                ($_.Properties[8].Value -eq 10) -or ($_.Properties[10].Value -in @(3, 10))
             }
             
             foreach ($event in $newEvents) {
@@ -1589,10 +2514,10 @@ function Start-RDPMonitoringService {
                 $username = $event.Properties[5].Value
                 $domain = $event.Properties[6].Value
                 
+                $geoInfo = Get-GeoIPInfo -IPAddress $sourceIP
+                
                 # Whitelist kontrolu
                 $isWhitelisted = Test-WhitelistedIP -IPAddress $sourceIP
-                
-                $geoInfo = Get-GeoIPInfo -IPAddress $sourceIP
                 
                 $eventData = @{
                     EventType    = if ($isSuccess) { "SuccessfulLogon" } else { "FailedLogon" }
