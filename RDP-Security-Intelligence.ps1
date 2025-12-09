@@ -33,7 +33,7 @@
     3.0.0
     
 .LINK
-    https://github.com/furkandncer/RDP-Security-Intelligence
+    https://github.com/frkndncr/RDP-Security-Intelligence
     
 .NOTES
     Windows Server 2012 R2/2016/2019/2022/2025 uyumlu
@@ -1777,7 +1777,7 @@ function New-DailyReport {
         <div class="footer">
             RDP Security Intelligence System v3.0 | 
             Olusturulma: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") |
-            <a href="https://github.com/furkandncer">GitHub</a>
+            <a href="https://github.com/frkndncr">GitHub</a>
         </div>
     </div>
 </body>
@@ -2451,7 +2451,7 @@ function New-WeeklyReport {
         <div class="footer">
             RDP Security Intelligence System v3.0 |
             Rapor: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") |
-            <a href="https://github.com/furkandncer">GitHub</a>
+            <a href="https://github.com/frkndncr">GitHub</a>
         </div>
     </div>
 </body>
