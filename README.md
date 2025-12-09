@@ -3,7 +3,7 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)](https://docs.microsoft.com/en-us/powershell/)
 [![Windows Server](https://img.shields.io/badge/Windows%20Server-2012%20R2%2B-green.svg)](https://www.microsoft.com/en-us/windows-server)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-3.0.0-red.svg)](https://github.com/furkandncer/RDP-Security-Intelligence)
+[![Version](https://img.shields.io/badge/Version-3.0.0-red.svg)](https://github.com/frkndncr/RDP-Security-Intelligence)
 
 **Kapsamlı RDP Güvenlik İzleme, Koruma ve Raporlama Sistemi**
 
@@ -74,7 +74,7 @@ Windows Server'larınızı RDP brute-force saldırılarından koruyun. Gerçek z
 New-Item -ItemType Directory -Path "C:\RDP-Security-Logs" -Force
 
 # GitHub'dan indirin
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/furkandncer/RDP-Security-Intelligence/main/RDP-Security-Intelligence.ps1" -OutFile "C:\RDP-Security-Logs\RDP-Security-Intelligence.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/frkndncr/RDP-Security-Intelligence/main/RDP-Security-Intelligence.ps1" -OutFile "C:\RDP-Security-Logs\RDP-Security-Intelligence.ps1"
 ```
 
 ### 2. Telegram Bot Oluşturun
@@ -285,8 +285,9 @@ MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
 **Furkan Dincer**
 
-- GitHub: [@furkandncer](https://github.com/furkandncer)
-- LinkedIn: [Furkan Dincer](https://linkedin.com/in/furkandncer)
+- GitHub: [@furkandncer](https://github.com/frkndncr)
+- LinkedIn: [Furkan Dincer](https://linkedin.com/in/furkan-dincer)
+- Instagram: [@f3rrkan](https://instagram.com/f3rrkan)
 
 ---
 
